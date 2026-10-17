@@ -1,6 +1,6 @@
-# Phill's Adventure Metro
+# Phill's Adventure: For the Forgotten
 
-My Phill Metroidvania. The name's a working title until I find one that fits the story.
+My Phill Metroidvania.
 
 Phill wakes up on a sunny day, finds the door open and waddles out into the backyard. A crow snatches him up and he ends up lost in the park, which feels like a huge dark forest when you're a little plush. Something's hurting everyone who lives there, so he stays to help before finding his way home.
 
