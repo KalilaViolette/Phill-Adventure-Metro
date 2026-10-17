@@ -49,6 +49,16 @@
   .overlay p { margin: 4px 0; color: var(--fg); }
   .overlay .sub { margin: -2px 0 14px; font-size: clamp(14px, 2.4vw, 22px); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }   /* the subtitle (her pick, 10/17/2026) */
   .overlay .small { color: var(--dim); font-size: 13px; max-width: 46ch; margin-inline: auto; }
+  /* the title card (her pick, 10/17/2026, Moonlit Grime v5): the painting fills the start screen, the title's in it, so the
+     words above it are kept for screen readers only and the start note sits low over the bottom of the picture */
+  #start { background: #07080e url(art/title/title_card.jpg) center / contain no-repeat; place-items: end end; text-align: right; }
+  #start > div { margin: 0 max(2%, 10px) max(2%, 10px) 0; max-width: min(38ch, 46%); padding: 8px 14px 9px; border-radius: 8px; background: rgba(7, 8, 14, .74); }   /* (bottom right, over the water: Phill's in the middle) */
+  #start h1, #start .sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #start .small { font-size: 12px; margin-inline: 0; }
+  #start:not([hidden]) ~ #touchpad { visibility: hidden; }   /* (the gamepad waits till he's started: it covered the title card) */
+  body.touch #start { text-align: center; }
+  body.touch #start > div { max-width: none; margin: 0 max(11%, 12px) max(4%, 12px) 0; padding: 6px 16px; }
+  body.touch #start .small { display: none; }
   .tune { position: absolute; top: 8px; right: 8px; bottom: 8px; width: min(360px, calc(100% - 16px)); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; box-sizing: border-box; }
   .tune h2 { margin: 0 0 2px; font-size: 18px; font-weight: 600; }
   .tune .hint { color: var(--dim); font-size: 12px; margin: 0 0 10px; }
@@ -111,7 +121,7 @@
       <div>
         <h1>Phill's Adventure</h1>
         <p class="sub">For the Forgotten</p>
-        <p>Click here or press any button on your controller</p>
+        <p id="startHow">Click here or press any button on your controller</p>
         <p class="small" id="startNote"></p>
         <p class="small">Plug in the controller first. If it doesn't show up, press a button on it once the game is open.</p>
       </div>
@@ -139,55 +149,55 @@
   </div>
 </div>
 <!-- the game's code. Rooms aren't listed here: they load one at a time as Phill gets near them -->
-<script>window.BUILD = '1018s';   // bump on every update: every script, room file and picture is asked for with it, so a browser never keeps an old copy</script>
-<script src="art/phill/phill_frames.js?v=1018s"></script>
-<script src="art/crow/crow_frames.js?v=1018s"></script>
-<script src="rooms/index.js?v=1018s"></script>
-<script src="rooms/map.js?v=1018s"></script>
-<script src="art/rootwood/rootwood_sprites.js?v=1018s"></script>
-<script src="art/rootwood/soldier_sprites.js?v=1018s"></script>
-<script src="art/pond/pond_sprites.js?v=1018s"></script>
-<script src="art/playground/playground_sprites.js?v=1018s"></script>
-<script src="art/oak/oak_sprites.js?v=1018s"></script>
-<script src="art/wildlife/wildlife.js?v=1018s"></script>
-<script src="art/hitmasks.js?v=1018s"></script>
-<script src="art/warren/warren_sprites.js?v=1018s"></script>
-<script src="js/config.js?v=1018s"></script>
-<script src="js/input.js?v=1018s"></script>
-<script src="js/audio.js?v=1018s"></script>
-<script src="js/assets.js?v=1018s"></script>
-<script src="js/fx.js?v=1018s"></script>
-<script src="js/world.js?v=1018s"></script>
-<script src="js/rooms.js?v=1018s"></script>
-<script src="js/player.js?v=1018s"></script>
-<script src="js/story.js?v=1018s"></script>
-<script src="js/idle.js?v=1018s"></script>
-<script src="js/scene.js?v=1018s"></script>
-<script src="js/scenes/opening.js?v=1018s"></script>
-<script src="js/font.js?v=1018s"></script>
-<script src="js/talk.js?v=1018s"></script>
-<script src="js/pins.js?v=1018s"></script>
-<script src="js/foes.js?v=1018s"></script>
-<script src="js/boss.js?v=1018s"></script>
-<script src="js/pond.js?v=1018s"></script>
-<script src="js/pond_bosses.js?v=1018s"></script>
-<script src="js/rootwood.js?v=1018s"></script>
-<script src="js/rootwood_foes2.js?v=1018s"></script>
-<script src="js/rootwood_plants.js?v=1018s"></script>
-<script src="js/oak.js?v=1018s"></script>
-<script src="js/wildlife.js?v=1018s"></script>
-<script src="js/oak_bosses.js?v=1018s"></script>
-<script src="js/playground.js?v=1018s"></script>
-<script src="js/playground_bosses.js?v=1018s"></script>
-<script src="js/map.js?v=1018s"></script>
-<script src="js/scenes/rootwood.js?v=1018s"></script>
-<script src="js/camera.js?v=1018s"></script>
-<script src="js/render.js?v=1018s"></script>
-<script src="js/warren.js?v=1018s"></script>
-<script src="js/ui.js?v=1018s"></script>
-<script src="js/main.js?v=1018s"></script>
-<script src="js/touch.js?v=1018s"></script>
-<script src="js/areas.js?v=1018s"></script>
-<script src="js/debug.js?v=1018s"></script>
+<script>window.BUILD = '1018t';   // bump on every update: every script, room file and picture is asked for with it, so a browser never keeps an old copy</script>
+<script src="art/phill/phill_frames.js?v=1018t"></script>
+<script src="art/crow/crow_frames.js?v=1018t"></script>
+<script src="rooms/index.js?v=1018t"></script>
+<script src="rooms/map.js?v=1018t"></script>
+<script src="art/rootwood/rootwood_sprites.js?v=1018t"></script>
+<script src="art/rootwood/soldier_sprites.js?v=1018t"></script>
+<script src="art/pond/pond_sprites.js?v=1018t"></script>
+<script src="art/playground/playground_sprites.js?v=1018t"></script>
+<script src="art/oak/oak_sprites.js?v=1018t"></script>
+<script src="art/wildlife/wildlife.js?v=1018t"></script>
+<script src="art/hitmasks.js?v=1018t"></script>
+<script src="art/warren/warren_sprites.js?v=1018t"></script>
+<script src="js/config.js?v=1018t"></script>
+<script src="js/input.js?v=1018t"></script>
+<script src="js/audio.js?v=1018t"></script>
+<script src="js/assets.js?v=1018t"></script>
+<script src="js/fx.js?v=1018t"></script>
+<script src="js/world.js?v=1018t"></script>
+<script src="js/rooms.js?v=1018t"></script>
+<script src="js/player.js?v=1018t"></script>
+<script src="js/story.js?v=1018t"></script>
+<script src="js/idle.js?v=1018t"></script>
+<script src="js/scene.js?v=1018t"></script>
+<script src="js/scenes/opening.js?v=1018t"></script>
+<script src="js/font.js?v=1018t"></script>
+<script src="js/talk.js?v=1018t"></script>
+<script src="js/pins.js?v=1018t"></script>
+<script src="js/foes.js?v=1018t"></script>
+<script src="js/boss.js?v=1018t"></script>
+<script src="js/pond.js?v=1018t"></script>
+<script src="js/pond_bosses.js?v=1018t"></script>
+<script src="js/rootwood.js?v=1018t"></script>
+<script src="js/rootwood_foes2.js?v=1018t"></script>
+<script src="js/rootwood_plants.js?v=1018t"></script>
+<script src="js/oak.js?v=1018t"></script>
+<script src="js/wildlife.js?v=1018t"></script>
+<script src="js/oak_bosses.js?v=1018t"></script>
+<script src="js/playground.js?v=1018t"></script>
+<script src="js/playground_bosses.js?v=1018t"></script>
+<script src="js/map.js?v=1018t"></script>
+<script src="js/scenes/rootwood.js?v=1018t"></script>
+<script src="js/camera.js?v=1018t"></script>
+<script src="js/render.js?v=1018t"></script>
+<script src="js/warren.js?v=1018t"></script>
+<script src="js/ui.js?v=1018t"></script>
+<script src="js/main.js?v=1018t"></script>
+<script src="js/touch.js?v=1018t"></script>
+<script src="js/areas.js?v=1018t"></script>
+<script src="js/debug.js?v=1018t"></script>
 </body>
 </html>

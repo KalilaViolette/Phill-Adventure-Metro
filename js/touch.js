@@ -240,7 +240,7 @@ const touchUI = (() => {
   bz.addEventListener('click', () => { buzz = !buzz; bz.textContent = 'Buzz: ' + (buzz ? 'on' : 'off'); try { localStorage.setItem('phill-metro-buzz', buzz ? 'on' : 'off'); } catch (e) {} if (buzz && navigator.vibrate) try { navigator.vibrate(20); } catch (e) {} bz.blur(); });
   tb.parentNode.insertBefore(bz, tb);
   show(active);
-  if (active) { const n = document.querySelector('#start p'); if (n) n.textContent = 'Tap here to start'; }
+  if (active) { const n = document.getElementById('startHow') || document.querySelector('#start p'); if (n) n.textContent = 'Tap here to start'; }   // (by its id: the first line in there is the subtitle now)
   return { show, layout, get active() { return active; } };
 })();
 
