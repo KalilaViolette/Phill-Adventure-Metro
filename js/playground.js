@@ -132,7 +132,7 @@ function updateBursts(dt) {
       s.hit.add(b); breakOpen(b);
     }
     for (const sh of shots) if (!sh.reflected && Math.hypot(sh.x - s.x, sh.y - s.y) < r) { sh.dead = true; part(sh.x, sh.y, 0, -20, 0.3, '#ffffff', 2, 0); }
-    if (bossFighting() && !s.hit.has('boss') && bossKind() && bossKind().squeaked && bossKind().squeaked(s.x, s.y, r)) s.hit.add('boss');
+    if (bossFighting() && !s.hit.has('boss') && (bossKind() ? bossKind().squeaked && bossKind().squeaked(s.x, s.y, r) : soldierSqueaked(s.x, s.y, r))) s.hit.add('boss');
   }
   for (let i = bursts.length - 1; i >= 0; i--) if (bursts[i].t > 0.3) bursts.splice(i, 1);
 }
@@ -154,7 +154,7 @@ function screechShot(f, sc = 1) {
 Object.assign(FOE, {
   // wind-up chattering teeth: hop about, then come snapping at him. Newer (10/16/2026): half the time a chomp that lands
   // clamps on and hangs on (mash free), a skitter along the ground at him, and three chomps in a row
-  teeth: { hp: 2, hw: 9, h: 14, acorns: [1, 2], leaps: true,
+  teeth: { hp: 4, hw: 9, h: 14, acorns: [1, 2], leaps: true,
     box: f => (f.state === 'bite' ? { l: -999, r: -998, t: -999, b: -998 } : { l: f.x - 9, r: f.x + 9, t: f.y - 14, b: f.y }),
     harmless: f => ['chomp', 'skitter', 'bite'].includes(f.state),
     update(f, dt) {
@@ -210,7 +210,7 @@ Object.assign(FOE, {
 
   // a little jack-in-the-box: sits there shut, then pops out at him when he's close. Newer (10/16/2026): its head springs
   // right out on its spring and comes after him, the box hops at him lid shut, and it bursts open in a shower of confetti
-  jack: { hp: 3, hw: 10, h: 18, acorns: [1, 2],
+  jack: { hp: 5, hw: 10, h: 18, acorns: [1, 2],
     box: f => (f.state === 'pop' || f.state === 'burst' ? { l: f.x - 10, r: f.x + 10, t: f.y - 44, b: f.y } : f.state === 'spring' || f.state === 'reel' ? { l: f.x - 10, r: f.x + 10, t: f.y - 30, b: f.y } : { l: f.x - 10, r: f.x + 10, t: f.y - 18 + f.yoff, b: f.y + f.yoff }),
     harmless: f => ['spring', 'reel', 'hop'].includes(f.state),
     update(f, dt) {
@@ -218,10 +218,10 @@ Object.assign(FOE, {
       if (f.yoff < 0 && f.state !== 'hop') hopArc(f, dt);
       const dx = P.x - f.x, adx = Math.abs(dx);
       if (f.state === 'walk' && f.cd <= 0 && near(f, 9 * T, 60)) {
-        const m = choose([[adx < 54 ? 2 : 0, 'peek'], [hasMove(f, 2) && adx < 110 ? 1.3 : 0, 'springpeek'], [hasMove(f, 3) && adx > 40 ? 1 : 0, 'hopwind'], [hasMove(f, 4) && adx < 80 ? 1.1 : 0, 'burstpeek']]);   // the pop from close enough for it to reach (it went off from 70, at nothing)
+        const m = choose([[adx < 44 ? 2 : 0, 'peek'], [hasMove(f, 2) && adx < 110 ? 1.3 : 0, 'springpeek'], [hasMove(f, 3) && adx > 40 ? 1 : 0, 'hopwind'], [hasMove(f, 4) && adx < 80 ? 1.1 : 0, 'burstpeek']]);   // the pop from close enough for it to reach (it went off from 70, at nothing, and its drawn head only reaches about 12 out: 10/16/2026)
         if (m) { setFoeState(f, m); sfx.ticking(); f.f = Math.sign(dx) || f.f; }
       }
-      else if (f.state === 'peek' && f.t >= 0.45) { setFoeState(f, 'pop'); sfx.boing(); }
+      else if (f.state === 'peek') { if (adx > 18) groundStep(f, f.f, 60, dt); if (f.t >= 0.45) { setFoeState(f, 'pop'); sfx.boing(); } }   // shuffling in as it ticks: the head only reaches about 12 out (10/16/2026). Not into touching him, that hurts on its own
       else if (f.state === 'pop') { if (f.t < 0.2) strike(f, { l: Math.min(f.x - 14, f.x + f.f * 46), r: Math.max(f.x + 14, f.x + f.f * 46), t: f.y - 50, b: f.y - 10 }, 20); if (f.t >= 1.0) { setFoeState(f, 'walk'); f.cd = 1.4; } }   // the head comes out toward him
       else if (f.state === 'springpeek' && f.t >= 0.4) { setFoeState(f, 'spring'); sfx.boing(); f.hx = f.x; f.hy = f.y - 36; }
       else if (f.state === 'spring') {                                                   // its head out on the spring, coming after him (it only reaches so far)
@@ -265,7 +265,7 @@ Object.assign(FOE, {
   // a sand bucket on goo legs: waddles, tips back and lobs a clump of sand. Newer (10/16/2026): up close it slams a little
   // spade down on him, it heaps up a wall of sand and shoves it along the ground at him, and it flips itself upside down
   // and comes down right over him, trapping him under it (mash free)
-  bucket: { hp: 3, hw: 10, h: 22, acorns: [1, 2], walker: true,
+  bucket: { hp: 5, hw: 10, h: 22, acorns: [1, 2], walker: true,
     box: f => (f.state === 'trap' ? { l: f.x - 12, r: f.x + 12, t: f.y - 24, b: f.y } : { l: f.x - 10, r: f.x + 10, t: f.y - 22 + f.yoff, b: f.y + f.yoff }),
     harmless: f => ['flip', 'trap'].includes(f.state),
     update(f, dt) {
@@ -278,7 +278,7 @@ Object.assign(FOE, {
           if (f.x <= f.range[0]) { f.x = f.range[0]; f.f = 1; } else if (f.x >= f.range[1]) { f.x = f.range[1]; f.f = -1; }
         }
         if (near(f, 220, 100) && f.cd <= 0) {
-          const m = choose([[adx > 40 ? 2 : 0.5, 'tip'], [hasMove(f, 2) && adx < 46 && level ? 2 : 0, 'raise'], [hasMove(f, 3) && level && adx > 50 ? 1.1 : 0, 'pile'], [hasMove(f, 4) && adx > 30 && adx < 110 && level ? 1 : 0, 'flipwind']]);
+          const m = choose([[adx > 40 ? 2 : 0.5, 'tip'], [hasMove(f, 2) && adx < 38 && level ? 2 : 0, 'raise'], [hasMove(f, 3) && level && adx > 50 ? 1.1 : 0, 'pile'], [hasMove(f, 4) && adx > 30 && adx < 110 && level ? 1 : 0, 'flipwind']]);
           if (m) { f.f = Math.sign(dx) || f.f; setFoeState(f, m); sfx.windup(); }
         }
       } else if (f.state === 'tip' && f.t >= 0.5) {
@@ -286,7 +286,8 @@ Object.assign(FOE, {
         const sx = f.x + f.f * 10, sy = f.y - 24, tx = P.x, ty = P.y - 16, time = Math.max(0.5, Math.min(0.95, Math.abs(tx - sx) / 220));
         shots.push({ kind: 'sand', x: sx, y: sy, vx: (tx - sx) / time, vy: (ty - sy) / time - 0.5 * 600 * time, g: 600, from: f, reflected: false, t: 0 });
       } else if (f.state === 'dump' && f.t >= 0.4) { setFoeState(f, 'walk'); f.cd = 1.8 + Math.random(); }
-      else if (f.state === 'raise' && f.t >= 0.4) { setFoeState(f, 'slam'); sfx.slam(); puff(f.x + f.f * 22, f.y, 5, 30, '#c4a674'); }
+      else if (f.state === 'raise' && f.t < 0.4) { if (adx > 18) groundStep(f, f.f, 40, dt); }   // stepping in with the spade up: the drawn spade lands about 15 out (10/16/2026)
+      else if (f.state === 'raise') { setFoeState(f, 'slam'); sfx.slam(); puff(f.x + f.f * 22, f.y, 5, 30, '#c4a674'); }
       else if (f.state === 'slam') {                                                     // the spade brought down hard in front of it
         if (f.t < 0.15) strike(f, { l: Math.min(f.x + f.f * 6, f.x + f.f * 38), r: Math.max(f.x + f.f * 6, f.x + f.f * 38), t: f.y - 30, b: f.y }, 20);
         if (f.t >= 0.5) { setFoeState(f, 'walk'); f.cd = 1.4 + Math.random() * 0.5; }
@@ -313,7 +314,7 @@ Object.assign(FOE, {
       else if (f.state === 'flipwind' && f.t >= 0.4) { setFoeState(f, 'flip'); f.vy = -340; f.hopVX = hopTo(f, P.x, -340); f.yoff = -0.01; sfx.boing(); }
       else if (f.state === 'flip') {                                                     // upside down, coming down over him...
         const landed = hopArc(f, dt);
-        if (f.vy > -40 && !f.hitP && phillAround() && overlap({ l: f.x - 10, r: f.x + 10, t: f.y + f.yoff - 30, b: f.y + f.yoff }, { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y })) {
+        if (f.vy > -40 && !f.hitP && phillAround() && artHit(f, { l: f.x - 10, r: f.x + 10, t: f.y + f.yoff - 30, b: f.y + f.yoff })) {   // (on him, and on its drawing: artHit)
           f.hitP = true; f.atkBox = { l: f.x - 10, r: f.x + 10, t: f.y + f.yoff - 30, b: f.y + f.yoff }; f.atkT = 0.1;
           const out = foeStrike(f.x, 'bucket', { cost: 20, dmg: 1 });
           if (out === 'hit' && P.health > 0) { pinHim(f, 6); setFoeState(f, 'trap'); f.x = P.x; f.yoff = 0; tellOnce('bucketTrap', f, 'mash to get out', 40); return; }
@@ -338,7 +339,7 @@ Object.assign(FOE, {
 
   // a jump rope: snakes along, rears up, and whips. Newer (10/16/2026): skips at him, the loop sweeping the ground twice
   // (jump it), throws a lasso and drags him in, and cracks twice in a row
-  rope: { hp: 2, hw: 16, h: 8, acorns: [1, 1], walker: true,
+  rope: { hp: 4, hw: 16, h: 8, acorns: [1, 1], walker: true,
     update(f, dt) {
       baseState(f, dt);
       const adx = Math.abs(P.x - f.x);
@@ -427,7 +428,7 @@ Object.assign(FOE, {
       else if (f.state === 'string') {                                                   // its string whipped round at him
         const a = Math.min(1, f.t / 0.2), tx = f.x + f.f * 30 * a, ty = f.y + 14 - a * 10;
         f.sx = tx; f.sy = ty;
-        if (f.t < 0.25) strike(f, { l: Math.min(f.x, tx) - 4, r: Math.max(f.x, tx) + 4, t: f.y - 10, b: f.y + 16 }, 16);
+        if (f.t < 0.25) strike(f, { l: Math.min(f.x, tx) - 4, r: Math.max(f.x, tx) + 4, t: f.y - 10, b: f.y + 16, area: true }, 16);   // (area: the string's a drawn line, not part of its picture)
         if (f.t >= 0.5) { setFoeState(f, 'walk'); f.cd = 1.2 + Math.random() * 0.5; }
       } else if (f.state === 'splitwind' && f.t >= 0.6) {                                // and pops into three little ones
         sfx.pop(); setFoeState(f, 'down'); f.hp = 0;
@@ -450,14 +451,14 @@ Object.assign(FOE, {
 
   // a party horn on goo feet: blows a screech that rolls along the ground at him (jump it, or parry it back). Newer
   // (10/16/2026): up close its paper tongue shoots out and pokes him, three short toots in a row, and a cone of confetti
-  horn: { hp: 3, hw: 10, h: 12, acorns: [1, 2],
+  horn: { hp: 5, hw: 10, h: 12, acorns: [1, 2],
     update(f, dt) {
       baseState(f, dt);
       const adx = Math.abs(P.x - f.x);
       if (f.state === 'walk') {
         if (near(f, 260, 50) && f.cd <= 0) {
           const m = choose([[adx > 40 ? 2 : 0.4, 'aim'], [hasMove(f, 2) && adx < 50 ? 2.2 : 0, 'pokewind'], [hasMove(f, 3) && adx > 50 ? 1.1 : 0, 'aim3'], [hasMove(f, 4) && adx < 130 ? 1 : 0, 'conewind']]);
-          if (m) { f.f = Math.sign(P.x - f.x) || f.f; f.toots = m === 'aim3' ? 3 : 1; setFoeState(f, m); }
+          if (m) { f.f = Math.sign(P.x - f.x) || f.f; f.toots = m === 'aim3' ? 3 : 1; setFoeState(f, m); if (m === 'aim' || m === 'aim3') sfx.inhale(); }   // a breath in before it blows: its only wind up with a pose and no sound (10/16/2026)
         }
       } else if ((f.state === 'aim' || f.state === 'aim3') && f.t >= (f.state === 'aim3' ? 0.4 : 0.5)) { setFoeState(f, 'blow'); screechShot(f, f.toots > 1 ? 0.7 : 1); }
       else if (f.state === 'blow') {

@@ -771,6 +771,8 @@ SCENES.moleFree = () => {
     wait(0.6), run(() => popup(P.x, P.y - 54, 'the mole digs his way home', '#ffd36b', true)), bars(false),
   ];
 };
+const MOLE_HERE_JOKE = ["*snf* You've got a look on you. Go on, then.", "'If you can take me anywhere I've been, why not somewhere I haven't?'",
+  "Fine. Where haven't you been?", "...", "Exactly. Can't take you somewhere you can't even tell me about.", "Go and be somewhere first. Then knock."];
 WSCENES.mole = n => {
   const steps = walkUp(n);
   if (world.has.supply_candles && !given('candles')) return [...steps, sayN(n, '*snf* Wax. Birthday candles, by the smell.'), ...deliverSteps(n, 'candles', ["Good. I'll melt them into the cracks by the walled up tunnel. Fresh wax holds.", "...Thanks."])];
@@ -781,7 +783,9 @@ WSCENES.mole = n => {
       "Only places I've dug, mind. And only ones you've been."));
     return steps;
   }
-  steps.push(sayN(n, ...pick([["*snf* Knock on the molehill if you're going somewhere."], ["That wall at the bottom of the town. I dug that tunnel. I sealed it, too. Don't ask."], ['The toys took me in when the Grime got my place. So I dig for them. Fair trade.'], ["Spoons. Best thing for digging. Don't let anyone tell you different."]])));
+  // her joke (10/16/2026): Phill can't talk, so the mole reads the question off his face. Told once, then it's in the rotation
+  if (!world.flags.moleHereJoke) { world.flags.moleHereJoke = true; saveWorld(); steps.push(sayN(n, ...MOLE_HERE_JOKE)); return steps; }
+  steps.push(sayN(n, ...pick([MOLE_HERE_JOKE, ["*snf* Knock on the molehill if you're going somewhere."], ["That wall at the bottom of the town. I dug that tunnel. I sealed it, too. Don't ask."], ['The toys took me in when the Grime got my place. So I dig for them. Fair trade.'], ["Spoons. Best thing for digging. Don't let anyone tell you different."]])));
   return steps;
 };
 // knock on a molehill: he comes up and takes you anywhere he's dug

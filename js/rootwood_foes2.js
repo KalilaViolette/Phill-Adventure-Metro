@@ -49,7 +49,7 @@ Object.assign(FOE, {
   // ---- the maple spinner: hangs in the air spinning on its one wing, follows him round the room keeping up over his
   // head, whirs, and drops on him seed first. Shield up over his head blocks it (or parries it). Miss, and it sticks
   // in the ground for a moment: that's the time to hit it
-  spinner: { hp: 2, hw: 9, h: 12, acorns: [1, 2], free: true, ownSpot: true,
+  spinner: { hp: 3, hw: 9, h: 12, acorns: [1, 2], free: true, ownSpot: true,
     setup(f) {
       for (let n = 0; n < 24 && boxSolid(f.x - 9, f.y - 12, f.x + 9, f.y + 6); n++) f.y += 4;
       f.hx = f.x; f.hy = f.y; f.spin = Math.random() * 6; f.off = (f.i % 2 ? 1 : -1) * (14 + (f.i % 3) * 8); f.cd = 1 + Math.random();
@@ -126,7 +126,7 @@ Object.assign(FOE, {
   // ---- the shoelace: slithers after him along the ground, up a step, off a ledge he's dropped from, and springs up
   // onto one he's gone up to. Close in, it coils back and lashes out low along the ground: that one trips him flat.
   // Jump at it and it rears up and snaps at him in the air. Parried, it ties itself in a knot
-  lace: { hp: 3, hw: 12, h: 9, acorns: [1, 2], leaps: true, baseMoves: 4,
+  lace: { hp: 5, hw: 12, h: 9, acorns: [1, 2], leaps: true, baseMoves: 4,
     setup(f) { const gy = groundY(f.x, f.y, 40, 8); if (gy !== null) f.y = gy; f.home = f.x; f.rt = 0; f.cd = 0.6 + Math.random() * 0.6; },   // settled onto the ground wherever it was put
     box: f => {
       const fr = f.x + f.f * 26, bk = f.x - f.f * 20;                                 // the head's out in front of the middle
@@ -151,10 +151,11 @@ Object.assign(FOE, {
         else if (Math.abs(f.x - f.home) > 5 * T) dir = Math.sign(f.home - f.x);           // nothing to chase: it noses about near where it lives
         f.f = dir;
         if (on && f.cd <= 0 && P.ground && Math.abs(dy) < 24) {                          // its newer two (10/16/2026): a lasso that drags him in, and a whirl that hits both sides
-          const m = choose([[Math.abs(dx) < 66 && Math.sign(dx || f.f) === f.f ? 2 : 0, 'coil'], [hasMove(f, 3) && Math.abs(dx) > 70 && Math.abs(dx) < 120 ? 1.4 : 0, 'throwwind'], [hasMove(f, 4) && Math.abs(dx) < 44 ? 1.4 : 0, 'whirlwind']]);
+          // (each from where its drawing really reaches him, 10/16/2026: the lash 54 px, the lasso about 95 with its throw, the whirl 34 either side)
+          const m = choose([[Math.abs(dx) < 58 && Math.sign(dx || f.f) === f.f ? 2 : 0, 'coil'], [hasMove(f, 3) && Math.abs(dx) > 60 && Math.abs(dx) < 100 ? 1.4 : 0, 'throwwind'], [hasMove(f, 4) && Math.abs(dx) < 40 ? 1.4 : 0, 'whirlwind']]);
           if (m) { if (m !== 'coil') f.f = Math.sign(dx) || f.f; setFoeState(f, m); if (heard(f)) sfx.hiss(); return; }   // (the lash only at his feet while he's on them: jump and it rears instead)
         }
-        if (on && f.cd <= 0 && Math.abs(dx) < 46 && dy < -26 && dy > -96) { f.f = Math.sign(dx) || f.f; setFoeState(f, 'rear'); if (heard(f)) sfx.hiss(); return; }
+        if (on && f.cd <= 0 && Math.abs(dx) < 30 && dy < -26 && dy > -96) { f.f = Math.sign(dx) || f.f; setFoeState(f, 'rear'); if (heard(f)) sfx.hiss(); return; }   // (the snap reaches 24 px)
         if (on && Math.abs(dx) <= 26 && Math.abs(dy) < 24) return;                      // right on him: it holds there for its next go
         const res = groundStep(f, dir, sp, dt);
         if (res === 'edge') {
@@ -215,7 +216,7 @@ Object.assign(FOE, {
   // bubbles) and when he's over it, the bubbles boil up, the eye in its palm shows through, and it shoots up and grabs
   // at him. A grab that lands flings him up in the air. Then it waits up there swaying, and swipes sideways at him if
   // he's down on the bank beside it. Parry the swipe and it flops over limp. It can't be hit while it's under
-  reacher: { hp: 3, hw: 9, h: 0, acorns: [2, 3], free: true, ownSpot: true, noHurt: true, baseMoves: 4,
+  reacher: { hp: 5, hw: 9, h: 0, acorns: [2, 3], free: true, ownSpot: true, noHurt: true, baseMoves: 4,
     setup(f, d) {
       const pl = (room.def.pool || []).find(p => f.x >= p[0] && f.x <= p[1]) || (room.def.pool || [])[0];
       f.sy = pl ? pl[2] : f.y; f.y = f.sy;
@@ -333,7 +334,7 @@ Object.assign(FOE, {
   // ---- the night wing (a nightmare thing): asleep in the Grime till he comes near, then it peels up off the surface.
   // It circles him, folds its wings with a shriek, and shoots straight at him, then turns and does it again. After two
   // it hangs there worn out for a moment. Shooting into a wall knocks it silly. Parry a dash and it reels
-  nwing: { hp: 3, hw: 10, h: 12, acorns: [2, 3], free: true, ownSpot: true,
+  nwing: { hp: 4, hw: 10, h: 12, acorns: [2, 3], free: true, ownSpot: true,
     setup(f, d) {
       f.orb = Math.random() * 6; f.odir = f.i % 2 ? 1 : -1; f.n = 0;
       const pl = (room.def.pool || []).find(p => f.x >= p[0] && f.x <= p[1]);
@@ -377,7 +378,7 @@ Object.assign(FOE, {
         const moved = Math.hypot(f.x - x0, f.y - y0);
         const out = strike(f, FOE.nwing.box(f), 18);
         if (out === 'parried') { setFoeState(f, 'stagger'); f.stagT = 1.6; f.vy = 0; return; }
-        if (out === 'blocked') { f.vel = 0; setFoeState(f, 'tired'); freeMove(f, -f.vx * 0.06, -f.vy * 0.06); return; }
+        if (out === 'blocked') { f.vel = 0; freeMove(f, -f.vx * 0.06, -f.vy * 0.06); setFoeState(f, f.n < 2 ? 'turn' : 'tired'); return; }   // (a block's neutral: it carries on as if the dash ended, it isn't worn out by it)
         if (moved < 340 * dt * 0.4) {                                                     // straight into the wall
           setFoeState(f, 'stagger'); f.stagT = 1.3; sfx.thud(); shakeT = 0.1; shakeA = 1.5; puff(f.x, f.y, 6, 30, '#3a2a52');
           tellOnce('nwingBonk', f, 'it flew right into the wall'); return;

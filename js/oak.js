@@ -112,7 +112,7 @@ Object.assign(FOE, {
   // a paper airplane: glides in long passes across the room, dipping down toward him when it comes past. Newer
   // (10/16/2026): loops the loop over him and swoops back down at him, throws a few little paper darts, and climbs up
   // and nose dives straight down at him, where it sticks in the ground a moment
-  plane: { hp: 2, hw: 14, h: 10, acorns: [1, 2], free: true,
+  plane: { hp: 4, hw: 14, h: 10, acorns: [1, 2], free: true,
     setup(f) { f.hx = f.x; f.hy = f.y; f.f = f.f || -1; f.dir = f.f; },
     box: f => ({ l: f.x - 14, r: f.x + 14, t: f.y - 14, b: f.y - 2 }),
     harmless: f => f.state === 'stuck' || f.state === 'climb',
@@ -185,7 +185,7 @@ Object.assign(FOE, {
   // an old tennis ball full of Grime: bounces about the room in big arcs, harder when he's near. Newer (10/16/2026): a
   // huge bounce that comes down on him with a shock along the ground both ways (jump it), spits Grime out of its split
   // seam, and spins in place and rolls at him along the ground
-  ball: { hp: 3, hw: 10, h: 20, acorns: [1, 2],
+  ball: { hp: 5, hw: 10, h: 20, acorns: [1, 2],
     setup(f) { f.vy = -200; f.air = true; f.hopVX = f.f * 60; },
     harmless: f => f.state === 'quake' && f.t > 0.2,
     update(f, dt) {
@@ -213,7 +213,7 @@ Object.assign(FOE, {
           f.vy = chase ? -320 : -230; f.air = true; setFoeState(f, 'walk');
         }
       } else if (f.state === 'quake') {                                                  // the shock along the ground, both ways
-        if (f.t < 0.18) strike(f, { l: f.x - 56, r: f.x + 56, t: f.y - 10, b: f.y + 2 }, 16);
+        if (f.t < 0.18) strike(f, { l: f.x - 56, r: f.x + 56, t: f.y - 10, b: f.y + 2, area: true }, 16);   // (area: the shock along the ground)
         if (f.t >= 0.45) { f.range = patrol(f.x, f.y); setFoeState(f, 'squash'); f.t = 0.14 - 0.5; }
       } else if (f.state === 'spit') {                                                   // its seam opens and spits a glob of Grime at him
         if (f.t >= 0.45 && !f.spat) {
@@ -250,25 +250,31 @@ Object.assign(FOE, {
       baseState(f, dt);
       const dx = P.x - f.x, adx = Math.abs(dx), below = phillAround() && !(P.story && !P.story.free) && P.y > f.y && P.y - f.y < 460;   // (it was 300: the crown's hang higher than that over the floor, and never dropped, 10/16/2026)
       if (f.state === 'walk') {                                                          // hanging there, swaying
+        if (f.y > f.hy + 4) { setFoeState(f, 'rise'); return; }                          // knocked out of a drop (or off the ground) by a hit: back up home first
         f.x = f.hx + Math.sin(f.t * 1.5) * 3;
         if (f.cd <= 0 && below) {
           const under = adx < 20;
           const m = choose([[under ? 2 : 0, 'drop'], [hasMove(f, 4) && adx < 26 ? 1.2 : 0, 'drop2'], [hasMove(f, 2) && adx < 100 && !under ? 0.6 : 0, 'shake'], [hasMove(f, 3) && adx > 40 && adx < 180 ? 0.5 : 0, 'spinwind']]);
-          if (m === 'drop' || m === 'drop2') { setFoeState(f, 'drop'); f.vy = 40; f.rebound = m === 'drop2'; sfx.whoosh(); }
+          if (m === 'drop' || m === 'drop2') { setFoeState(f, 'dropwind'); f.rebound = m === 'drop2'; sfx.rustle(1.4); }   // (it used to drop the moment he was under it: a beat first now, her call 10/17/2026)
           else if (m) { setFoeState(f, m); f.f = Math.sign(dx) || f.f; }
           else f.cd = 0.3;
         }
+      } else if (f.state === 'dropwind') {                                             // working loose: it shivers on its string and the leaves rustle
+        f.x = f.hx + Math.sin(f.t * 55) * 1.5;
+        if (f.t >= 0.4) { setFoeState(f, 'drop'); f.vy = 40; sfx.whoosh(); }
       } else if (f.state === 'drop') {
         f.vy = Math.min(f.vy + 900 * dt, 420);
         if (!freeMove(f, (f.hopVX || 0) * dt, f.vy * dt)) {
           puff(f.x, f.y, 5, 30); sfx.land();
           if (f.rebound) { f.rebound = false; setFoeState(f, 'bounce'); f.vy = -280; f.hopVX = Math.max(-120, Math.min(120, (P.x - f.x) / 0.62)); }   // back up off the ground...
-          else { setFoeState(f, 'rise'); f.hopVX = 0; }
+          else { setFoeState(f, 'stuck'); f.hopVX = 0; }                                   // nose stuck in the ground a moment: the time to hit it
         }
         strike(f, FOE.shuttle.box(f), 18);
       } else if (f.state === 'bounce') {                                                 // ...and over to come down on him again
         f.vy += 900 * dt; freeMove(f, f.hopVX * dt, f.vy * dt);
         if (f.vy > 0) { setFoeState(f, 'drop'); }
+      } else if (f.state === 'stuck') {
+        if (f.t >= 1.0) setFoeState(f, 'rise');
       } else if (f.state === 'rise') {
         const x0 = f.x, y0 = f.y, up = 45 + Math.min(105, Math.max(0, f.y - f.hy) * 0.4);   // faster from a long way down (it can drop a lot farther now: 11 s back up in the west drop, the audit rerun, 10/16/2026)
         freeMove(f, Math.sign(f.hx - f.x) * 20 * dt, -up * dt);
@@ -301,11 +307,11 @@ Object.assign(FOE, {
         if (f.flash > 0) { ctx.globalCompositeOperation = 'lighter'; spr('shuttle_drop', 0, 18, false, 0.6); ctx.globalCompositeOperation = 'source-over'; }
         ctx.restore(); return;
       }
-      if (f.state === 'walk' || f.state === 'shake' || f.state === 'spinwind') { ctx.strokeStyle = 'rgba(236,232,220,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.hx, f.y - 40); ctx.lineTo(f.x, f.y - 30); ctx.stroke(); }
+      if (f.state === 'walk' || f.state === 'shake' || f.state === 'spinwind' || f.state === 'dropwind') { ctx.strokeStyle = 'rgba(236,232,220,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.hx, f.y - 40); ctx.lineTo(f.x, f.y - 30); ctx.stroke(); }
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ellipse(f.x, f.y, 9, 1); drawFoe2(f, FOE.shuttle.frame(f), f.x, f.y);
       if (f.state === 'stagger') for (let i = 0; i < 3; i++) { const a = f.t * 8 + i * 2.1; ctx.fillStyle = '#ffd36b'; ctx.fillRect(Math.round(f.x + Math.cos(a) * 7) - 1, Math.round(f.y - 36 + Math.sin(a) * 2), 2, 2); }
     },
-    frame: f => 'shuttle_' + ({ walk: 'hang', drop: 'drop', bounce: 'rise', rise: 'rise', shake: 'shake', spinwind: 'hang', down: 'down', stagger: 'dizzy', hurt: 'drop' }[f.state] || 'hang') },
+    frame: f => 'shuttle_' + ({ walk: 'hang', dropwind: 'shake', stuck: 'drop', drop: 'drop', bounce: 'rise', rise: 'rise', shake: 'shake', spinwind: 'hang', down: 'down', stagger: 'dizzy', hurt: 'drop' }[f.state] || 'hang') },
 });
 
 // ---------- the cape, on him ----------

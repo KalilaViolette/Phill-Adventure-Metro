@@ -20,22 +20,22 @@ BOSS_KINDS.yoyo = {
         b.y += (b.base - 150 - b.y) * Math.min(1, dt * 3); b.ax += Math.sign(P.x - b.ax) * 60 * dt * fast; b.ax = Math.max(lo, Math.min(hi, b.ax)); b.x = b.ax + Math.sin(b.t * 3) * 6;
         if (b.cd <= 0) {
           const r = Math.random();
-          if (r < 0.55) { bossState('drop'); b.vy = 0; sfx.whirl(); popup(b.x, b.y - 70, '!', '#ff6b5a', true); }
-          else { bossState('swingWind'); b.from = b.x; b.to = Math.max(lo, Math.min(hi, b.x + Math.sign(dx || 1) * 220)); sfx.creak(); }
+          if (r < 0.55) { bossState('drop'); b.vy = 0; sfx.whirl(); bossBigTell(b.x, b.y - 70); }
+          else { bossState('swingWind'); b.from = b.x; b.to = Math.max(lo, Math.min(hi, b.x + Math.sign(dx || 1) * 220)); sfx.creak(); popup(b.x, b.y - 70, '!', '#ff6b5a', true); }
         }
         break;
       case 'drop':                                                                           // straight down on its string
         b.vy = Math.min(b.vy + 1200 * dt, 560); b.y = Math.min(b.base, b.y + b.vy * dt);
-        if (b.y >= b.base) { shakeT = 0.25; shakeA = 3; sfx.slam(); puff(b.x, b.base, 12, 70); if (phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.box(), me())) hurt(b.x, 'yoyo', 1); bossState('sleep'); b.vx = Math.sign(dx || b.f) * 150 * fast; b.f = Math.sign(b.vx) || b.f; }
-        else if (phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.box(), me())) hurt(b.x, 'yoyo', 1);
+        if (b.y >= b.base) { shakeT = 0.25; shakeA = 3; sfx.slam(); puff(b.x, b.base, 12, 70); if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossHit(this.box()) && bossHeavy(b.x, 'yoyo', 1) === 'parried') { bossState('stall'); b.vx = 0; popup(b.x, b.y - 70, 'knocked off its string', '#ffd36b'); break; } bossState('sleep'); b.vx = Math.sign(dx || b.f) * 150 * fast; b.f = Math.sign(b.vx) || b.f; }
+        else if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossHit(this.box())) { b.hitP = true; if (bossHeavy(b.x, 'yoyo', 1) === 'parried') { bossState('stall'); b.y = b.base; b.vx = 0; popup(b.x, b.y - 70, 'knocked off its string', '#ffd36b'); } }   // its move the shield can't take, once a drop
         break;
       case 'sleep': {                                                                        // spinning on the floor, walking the dog after him
         b.y = b.base; b.x += b.vx * dt; b.ax = b.x;
         if (Math.random() < dt * 20) part(b.x - Math.sign(b.vx) * 24, b.base - 2, -b.vx * 0.3, -40 - Math.random() * 60, 0.4, '#a89a78', 1, 200);
         if (b.x <= lo || b.x >= hi) { b.x = Math.max(lo, Math.min(hi, b.x)); bossState('stall'); shakeT = 0.2; shakeA = 2; sfx.clunk(); popup(b.x, b.y - 70, 'it stalls', '#ffd36b'); }
         else if (b.t >= 2.2 / fast) { bossState('snap'); sfx.reel(); }
-        if (phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.box(), me())) {
-          const out = foeStrike(b.x, 'yoyo', { cost: 26 });
+        if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossHit(this.box())) {   // once a roll (it checked every frame it touched him, so a block broke his guard on the spot)
+          b.hitP = true; const out = foeStrike(b.x, 'yoyo', { cost: 20 });
           if (out === 'parried') { bossState('stall'); b.vx = 0; popup(b.x, b.y - 70, 'knocked off its string', '#ffd36b'); }
         }
         break;
@@ -46,8 +46,8 @@ BOSS_KINDS.yoyo = {
       case 'swing': {                                                                        // a wide pendulum swing across the shaft, low
         const k = Math.min(1, b.t / (0.8 / fast));
         b.x = b.from + (b.to - b.from) * k; b.ax = b.x; b.y = b.base - 150 + Math.sin(Math.PI * k) * 120;
-        if (phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.box(), me())) {
-          const out = foeStrike(b.x, 'yoyo', { cost: 24 });
+        if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossHit(this.box())) {   // once a swing
+          b.hitP = true; const out = foeStrike(b.x, 'yoyo', { cost: 20 });
           if (out === 'parried') { bossState('stall'); b.y = b.base; popup(b.x, b.y - 70, 'knocked off its string', '#ffd36b'); break; }
         }
         if (k >= 1) { bossState('idle'); b.cd = 0.5; }
@@ -58,7 +58,7 @@ BOSS_KINDS.yoyo = {
   },
   hits(box, a) {
     const b = boss;
-    if (!overlap(box, this.box())) return;
+    if (!swingOn(box, this.box())) return;
     if (b.state === 'stall' || b.state === 'stagger' || b.state === 'falling') { pbHit(box, a, this.box()); return; }
     a.hit.add('boss'); a.stopLunge = true; spark(P.x + P.facing * 16, P.y - 20); sfx.tink(); P.recoilT = 0.1; P.recoilV = -P.facing * 200; if (a.type === 'down') pogo();   // spinning: the sword glances off
     if (!b.told) { b.told = 1; popup(P.x, P.y - 54, 'it just spins off the sword. wait till it stalls', '#cfd6e6'); }
@@ -83,6 +83,25 @@ BOSS_KINDS.yoyo = {
 // A big diamond kite caught in the high branches, its string snagged on a twig up and off to the left, a long tail of
 // rag bows. It swoops down along the branch on its string (duck it, or parry it and it tumbles into the twigs), snaps
 // its tail at you, and dives straight down where you stand. Tangled in the twigs it's open; up in the air it's half.
+// the rest of its tail (10/16/2026: the picture's tail stopped at the bottom of its cell, and the tail snap had nothing
+// drawn at all, so it hit by a plain box). Rag bows on a string, hanging and swaying, curling back on the wind up and
+// whipping across under it on the snap. Drawn in solid colours so the snap hits where the bows are
+function kiteTail(b, flip) {
+  const sx = b.x + (flip ? -5 : 5), sy = b.y + 18, side = Math.sign(P.x - b.x) || 1, n = 7, seg = 12;
+  let a = Math.sin(b.t * 2.2) * 0.15;                                            // hanging, swaying a little (from straight down)
+  if (b.state === 'tailWind') a = -side * 0.9 * Math.min(1, b.t / 0.25);
+  else if (b.state === 'tail') { const k = Math.max(0, Math.min(1, (b.t - 0.08) / 0.28)); a = -side * 1.2 + side * 2.4 * k; }
+  let x = sx, y = sy;
+  for (let i = 0; i < n; i++) {
+    const ai = a * (0.6 + 0.6 * i / n), nx = x + Math.sin(ai) * seg, ny = y + Math.cos(ai) * seg;
+    ctx.fillStyle = '#ece8dc'; for (let j = 1; j < 4; j++) ctx.fillRect(Math.round(x + (nx - x) * j / 4), Math.round(y + (ny - y) * j / 4), 1, 1);
+    x = nx; y = ny;
+    const bx = Math.round(x), by = Math.round(y), [dk, md, lt] = i % 2 ? ['#7a1e22', '#c83a3a', '#ec7a6a'] : ['#24502e', '#4a9a5a', '#8ad08a'];
+    ctx.fillStyle = dk; ctx.fillRect(bx - 4, by - 2, 3, 5); ctx.fillRect(bx + 2, by - 2, 3, 5);     // a little rag bow: two wings and the knot
+    ctx.fillStyle = md; ctx.fillRect(bx - 3, by - 1, 2, 3); ctx.fillRect(bx + 2, by - 1, 2, 3); ctx.fillRect(bx - 1, by - 1, 3, 3);
+    ctx.fillStyle = lt; ctx.fillRect(bx - 3, by - 1, 1, 1); ctx.fillRect(bx + 2, by - 1, 1, 1); ctx.fillRect(bx, by, 1, 1);
+  }
+}
 BOSS_KINDS.kite = {
   name: 'the kite', hp: 36, song: 'kite', phase2: 'the wind picks up', downText: 'the kite is down', starsY: 70,
   wakeSound: () => { sfx.paper(); setTimeout(() => sfx.whoosh(), 200); }, downSound: () => { sfx.paper(); sfx.thud(); },
@@ -100,7 +119,7 @@ BOSS_KINDS.kite = {
         if (b.cd <= 0) {
           const r = Math.random();
           if (r < 0.45) { bossState('swoopWind'); b.from = [b.x, b.y]; b.to = Math.max(lo, Math.min(hi, b.x + Math.sign(dx || 1) * 260)); sfx.paper(); popup(b.x, b.y - 70, '!', '#ff6b5a', true); }
-          else if (r < 0.75) { bossState('diveWind'); b.from = [b.x, b.y]; sfx.paper(); }
+          else if (r < 0.75) { bossState('diveWind'); b.from = [b.x, b.y]; sfx.paper(); bossBigTell(b.x, b.y - 70); }
           else { bossState('tailWind'); sfx.whoosh(); }
         }
         break;
@@ -108,8 +127,8 @@ BOSS_KINDS.kite = {
       case 'swoop': {                                                                        // down along the branch and up the other side
         const k = Math.min(1, b.t / (0.9 / fast));
         b.x = b.from[0] + (b.to - b.from[0]) * k; b.y = b.from[1] + Math.sin(Math.PI * k) * (b.base - 36 - b.from[1]);
-        if (phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.box(), me())) {
-          const out = foeStrike(b.x, 'kite', { cost: 26 });
+        if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossHit(this.box())) {   // once a swoop (it checked every frame)
+          b.hitP = true; const out = foeStrike(b.x, 'kite', { cost: 20 });
           if (out === 'parried') { bossState('tangle'); b.y = b.base - 70; popup(b.x, b.y - 70, 'tangled in the twigs', '#ffd36b'); sfx.snap(); break; }
         }
         if (k >= 1) { b.hx = b.x; bossState('idle'); b.cd = 0.5 + Math.random() * 0.4; }
@@ -118,7 +137,9 @@ BOSS_KINDS.kite = {
       case 'diveWind': b.x += (P.x - b.x) * Math.min(1, dt * 4); b.y -= 40 * dt; if (b.t >= 0.5 / fast) { bossState('dive'); b.vy = 0; sfx.whoosh(); } break;
       case 'dive':                                                                           // nose first, straight down
         b.vy = Math.min(b.vy + 1400 * dt, 620); b.y = Math.min(b.base - 20, b.y + b.vy * dt);
-        if (phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.box(), me())) hurt(b.x, 'kite', 1);
+        if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossHit(this.box())) {   // its move the shield can't take
+          b.hitP = true; if (bossHeavy(b.x, 'kite', 1) === 'parried') { bossState('tangle'); b.y = b.base - 70; popup(b.x, b.y - 70, 'tangled in the twigs', '#ffd36b'); sfx.snap(); break; }
+        }
         if (b.y >= b.base - 20) { shakeT = 0.2; shakeA = 3; sfx.thud(); puff(b.x, b.base, 10, 60); bossState('stuck'); }
         break;
       case 'stuck': b.y = b.base - 20; if (b.t >= 1.0) { bossState('rise'); } break;             // nose in the branch: open for a moment
@@ -126,19 +147,19 @@ BOSS_KINDS.kite = {
       case 'tailWind': hover(); if (b.t >= 0.4 / fast) { bossState('tail'); sfx.whip(); } break;
       case 'tail': {                                                                         // its tail snaps down and across the branch under it
         hover();
-        const hb = { l: b.x - 70, r: b.x + 70, t: b.y + 10, b: b.y + 90 };
-        if (b.t > 0.1 && b.t < 0.4 && !b.hitP && phillAround() && overlap(hb, me())) { b.hitP = true; foeStrike(b.x, 'kite', { cost: 20 }); }
+        const hb = { l: b.x - 70, r: b.x + 70, t: b.y + 10, b: b.y + 90 };   // (it hits where the tail's drawn now: kiteTail)
+        if (b.t > 0.1 && b.t < 0.4 && !b.hitP && phillAround() && bossHit(hb)) { b.hitP = true; foeStrike(b.x, 'kite', { cost: 20 }); }
         if (b.t >= 0.6) { bossState('idle'); b.cd = 0.7; }
         break;
       }
       case 'tangle': if (b.t >= 2.2) { bossState('rise'); } break;
       case 'stagger': if (b.t >= b.stagT) { bossState('rise'); } break;
     }
-    if (['idle', 'swoopWind', 'diveWind', 'tailWind'].includes(b.state) && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.box(), me())) hurt(b.x, 'kite', 1);
+    if (['idle', 'swoopWind', 'diveWind', 'tailWind'].includes(b.state) && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossBumpOk() && bossHit(this.box())) hurt(b.x, 'kite', 1);
   },
   hits(box, a) {
     const b = boss;
-    if (!overlap(box, this.box())) return;
+    if (!swingOn(box, this.box())) return;
     const open = b.state === 'tangle' || b.state === 'stuck' || b.state === 'stagger' || b.state === 'falling';
     pbHit(box, a, this.box());
     if (!open) b.hp += 0.5 * (PB_DMG[a.type] || 1) * swordBonus() * (a.scale || 1);                           // up in the air it's half as hurt
@@ -152,6 +173,7 @@ BOSS_KINDS.kite = {
     ctx.fillStyle = '#6e4a30'; ctx.fillRect(Math.round(b.ax - 6), Math.round(b.ay - 2), 12, 4);
     const fr = b.down ? 'kite_down' : b.state === 'swoop' || b.state === 'dive' ? 'kite_swoop' : b.state === 'tangle' || b.state === 'stuck' ? 'kite_tangle' : b.state === 'stagger' || b.state === 'falling' ? 'kite_hurt' : 'kite_fly_' + (Math.floor(b.t * 3) % 2 + 1);
     const flip = b.state === 'swoop' ? b.to < b.from[0] : P.x > b.x;
+    if (!b.down) kiteTail(b, flip);
     pbDraw(fr, b.x, b.y, flip);
   },
   dropAt: () => [boss.x, boss.base - 30],

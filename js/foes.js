@@ -4,8 +4,8 @@
 // They drop acorns (Rootwood's currency). Their hits can be blocked or parried; a parried spit flies back at them.
 const foes = [], shots = [], drops = [];
 const FOE = {
-  cap: { hp: 3, hw: 10, h: 17, speed: 34, acorns: [1, 2], walker: true, ownAir: true, harmless: f => f.state === 'wobble' || f.state === 'pounce' || f.state === 'coin' },   // (the pounce and the roll are their own hits, so the shield can take them)   // sized to the cap after its art pass
-  can: { hp: 4, hw: 7, h: 26, speed: 0, acorns: [2, 3], harmless: f => f.state === 'roll' || f.state === 'lie',
+  cap: { hp: 4, hw: 10, h: 17, speed: 34, acorns: [1, 2], walker: true, ownAir: true, harmless: f => f.state === 'wobble' || f.state === 'pounce' || f.state === 'coin' },   // (the pounce and the roll are their own hits, so the shield can take them)   // sized to the cap after its art pass
+  can: { hp: 5, hw: 7, h: 26, speed: 0, acorns: [2, 3], harmless: f => f.state === 'roll' || f.state === 'lie',
     box: f => (f.state === 'roll' || f.state === 'lie' ? { l: f.x - 10, r: f.x + 10, t: f.y - 20 + f.yoff, b: f.y + f.yoff } : { l: f.x - 7, r: f.x + 7, t: f.y - 26 + f.yoff, b: f.y + f.yoff }) },
 };
 const DMG = { side: 1, up: 1, low: 1, down: 1, rollslash: 2, charged: 3, chargedchop: 3, chargedwhirl: 3 };
@@ -55,7 +55,7 @@ function patrol(x, y) {
   let a = Math.max(l * T + 10, doorAt('left') ? 4 * T : T + 10), b = Math.min((r + 1) * T - 10, room.pxW - (doorAt('right') ? 4 * T : T + 10));
   // and not where the ground curves up into a step at the end: the moss bank's can hopped back onto the step's rounded
   // foot and sat half sunk in it, since its tiles read as open floor (10/16/2026)
-  const sunk = x => boxSolid(x - 3, y - 12, x + 3, y - 5);
+  const sunk = x => boxSolid(x - 3, y - 12, x + 3, y - 3);                       // (down to 3 off the ground: a bottle cap poked into the foot of the litter path's rounded steps, now that they keep walking, the stuck sweep 10/17/2026)
   while (b > a && sunk(b)) b -= 2;
   while (a < b && sunk(a)) a += 2;
   return [a, b];
@@ -132,18 +132,21 @@ function airStep(f, dt) {
 function chaseWalk(f, dt, sp, keep = 20) {
   const on = near(f, 16 * T, 7 * T);
   f.lost = on ? 0 : (f.lost || 0) + dt;
-  let tx;
+  let tx, home = false;
   if (on) tx = P.x;
   else if (f.lost < 4 && f.lastSeen !== undefined) tx = f.lastSeen;
-  else if (Math.abs(f.x - f.x0) > T || Math.abs(f.y - f.y0) > T) tx = f.x0;
-  else return false;
+  else if (f.lastSeen !== undefined && (Math.abs(f.x - f.x0) > 2 || Math.abs(f.y - f.y0) > T)) { tx = f.x0; home = true; }   // after a chase: back to where it was
+  else { f.lastSeen = undefined; return false; }                     // (its own back and forth never sends it home: it was walking 16px off, heading home, counting itself there and standing still for good, the stuck sweep 10/17/2026)
   if (on) f.lastSeen = P.x;
   const dx = tx - f.x, ty = on ? P.y : f.lost < 4 ? f.y : f.y0, dy = ty - f.y;
-  if (Math.abs(dx) <= keep) { if (on) f.f = Math.sign(dx) || f.f; return true; }
+  const settle = () => { f.x0 = f.x; f.y0 = f.y; f.lastSeen = undefined; f.homeT = 0; return false; };   // stays where it's got to and walks back and forth there
+  if (home && Math.abs(dx) <= 2) { if (Math.abs(dy) <= T) { f.lastSeen = undefined; return false; } return settle(); }   // home: back to its patrol (home but a level off, it can't get up: this is home now)
+  if (Math.abs(dx) <= keep && !home) { if (on) f.f = Math.sign(dx) || f.f; return true; }
   const dir = Math.sign(dx); f.f = dir;
   const res = groundStep(f, dir, sp, dt);
   if (res === 'edge') { if (dy > 20) { f.air = true; f.vy = -110; f.hopVX = dir * Math.max(80, sp); } }   // a little hop off, so it clears a rounded edge (it was landing back on the corner over and over: the stump in the well)
   else if (res === 'wall') { if (dy < -12 && dy > -3.5 * T && (f.hopCd || 0) <= 0) { f.air = true; f.vy = -360; f.hopVX = dir * 90; f.hopCd = 0.8; } }
+  if (home && (res === 'wall' || res === 'edge') && !f.air) { f.homeT = (f.homeT || 0) + dt; if (f.homeT > 1.5) return settle(); } else f.homeT = 0;   // can't find its way home: it makes do where it is
   return true;
 }
 
@@ -271,13 +274,34 @@ function keepClearOfDoors(f, k) {
   f.x = f.x0 = Math.max(pick[0], Math.min(pick[1], f.x));
 }
 const foeBox = f => { const k = FOE[f.kind]; if (k.box) return k.box(f); return { l: f.x - k.hw, r: f.x + k.hw, t: f.y - k.h + f.yoff, b: f.y + f.yoff }; };
-const phillAround = () => P.respawnT <= 0 && P.ko <= 0 && !P.hang && !P.held;
+const phillAround = () => P.respawnT <= 0 && P.ko <= 0 && !P.hang && !P.held && !(typeof DBG !== 'undefined' && DBG.ignore);   // (the menu's Ignore him: as far as the enemies can tell he isn't there, 10/17/2026)
 const guardUp = () => inp.guardH && !P.atk && !P.roll && !P.dash && P.hurtT <= 0 && P.gbreak <= 0 && !P.guardOut;
 let guardHeldRaw = false;                       // the shield button as pressed (input gets cleared during little scenes)
 function setFoeState(f, s) {
   if (f.state === 'down' && s !== 'down') return;   // knocked out is knocked out till the room's left and they come back. A hopper knocked out mid-hop was landing back on its feet with no health, and every hit after paid out again (her report)
   f.state = s; f.t = 0; f.hb = null; f.hitP = false;
+  const hv = HEAVY[f.kind];
+  if (hv && hv[0] === s) {                                                             // winding up the one the shield can't take: a red !! and a heavy sound
+    f.heavy = true; popup(f.x, f.y + (f.yoff || 0) - FOE[f.kind].h - 14, '!!', '#ff6b5a', true); if (!FOE[f.kind].ownWindup && (typeof heard !== 'function' || heard(f))) sfx.heavyWindup();   // (ownWindup: the plant traps make their own, quieter, 10/17/2026)
+  } else if (!hv || !hv.includes(s)) f.heavy = false;                                  // (on to anything that isn't that attack: over)
 }
+// Every enemy has a move the shield doesn't answer (her plan, 10/16/2026): a grab, a big slam, something from above.
+// These are the wind ups that start it. It's telegraphed (the red !! and a heavy sound), and a parry or a roll still
+// answers it, just not holding the shield up. A few have one already without this: the reacher grabs up from below,
+// the paper plane and the frog come down on top of him, the juice box lobs over the shield, and the spinner and the
+// gum leech drop on him from above (only the shield held up over his head takes those)
+const HEAVY = {                                                                         // [its wind up, then the attack's states]
+  cap: ['crouch', 'pounce'], can: ['tip', 'roll'], fork: ['lungewind', 'lunge'], lace: ['throwwind', 'lasso'],
+  rings: ['snagwind', 'snag'], sponge: ['tumblewind', 'tumble'], duck: ['crouch', 'leap'], bobber: ['under', 'pop'], bag: ['billow'], straw: ['archwind', 'arch', 'lunge'],
+  fishtoy: ['spinaim', 'corkscrew'], glove: ['grabwind', 'grab'], pike: ['aim', 'dart'], leech: ['bandwind', 'band'], teeth: ['skitwind', 'skitter'], jack: ['springpeek', 'spring'],
+  bucket: ['flipwind', 'flip'], rope: ['lassowind', 'lasso'], balloon: ['stringwind', 'string'], horn: ['pokewind', 'poke'], ball: ['spin', 'roll'], shuttle: ['spinwind', 'spiral'],
+  wrapper: ['aim', 'feint', 'dive'], nwing: ['fold', 'dash', 'turn'],                  // (her call, 10/17/2026: the last two without one. The wrapper's dive, feint and all, and the night wing's dashes, a fresh !! before each)
+};
+// what a block takes off the shield goes by how heavy the hit is (her plan, 10/16/2026): three normal ones empty it, the
+// same as three rolls. Each attack's own number (what it was tuned at before) says which it is: the light ones (up to
+// 16) take 18, the normal ones (up to 20) take 30, anything bigger takes 45
+const LIGHT_COST = 18, NORMAL_COST = 30, HEAVY_COST = 45;
+const weighCost = c => c <= 16 ? LIGHT_COST : c <= 20 ? NORMAL_COST : HEAVY_COST;
 
 // one of their hits reaching him: blocked, parried, or it lands
 function foeStrike(srcX, kind, o) {
@@ -287,8 +311,10 @@ function foeStrike(srcX, kind, o) {
   const covered = guardUp() && (raised ? Math.abs(srcX - P.x) < 20 : Math.sign(srcX - P.x) === P.facing);
   const lx = P.x + P.facing * (flat ? (P.swim ? 26 : 30) : 13), ly = P.y - (flat ? 12 : 26);   // where the lid is
   if (covered && P.parryT > 0) { parryFx(raised ? P.x : lx, raised ? P.y - 44 : ly); return 'parried'; }
-  if (covered) {
-    if (!blockHit(o.cost ?? tune.blockCost, srcX)) { sfx.block(); P.blockT = 0.15; P.recoilT = 0.12; P.recoilV = -P.facing * 180; hitstop = Math.max(hitstop, 0.04); spark(lx - P.facing, ly + 2); }
+  if (covered && o.heavy) popup(P.x, P.y - 54, 'too heavy to block', '#ff8a6b');      // (falls through to the hit)
+  else if (covered) {
+    if (!blockHit(weighCost(o.cost ?? tune.blockCost), srcX)) { sfx.block(); P.blockT = 0.15; P.recoilT = 0.12; P.recoilV = -P.facing * 180; hitstop = Math.max(hitstop, 0.04); spark(lx - P.facing, ly + 2); }
+    P.bumpSafe = 0.4;                                                                    // a blocked hit doesn't hurt him by its body running on into him either
     return 'blocked';
   }
   if (o.soft) { P.vx = Math.sign(P.x - srcX || -P.facing) * 120; P.vy = -120; sfx.bump(); puff(P.x, P.y - 24, 4, 30); return 'bonk'; }   // the squirrel's acorns: a bonk, no harm done
@@ -305,8 +331,10 @@ function foeStrikeWet(srcX, kind, o) {
   const covered = guardUp() && (d < 6 || (vx * A[0] + vy * A[1]) / d > 0.34);
   const lx = cx + A[0] * 24, ly = cy + A[1] * 24;                                       // where the lid is
   if (covered && P.parryT > 0) { parryFx(lx, ly); return 'parried'; }
-  if (covered) {
-    if (!blockHit(o.cost ?? tune.blockCost, srcX)) { sfx.block(); P.blockT = 0.15; P.vx -= A[0] * 150; P.vy -= A[1] * 150; hitstop = Math.max(hitstop, 0.04); spark(lx, ly); }
+  if (covered && o.heavy) popup(P.x, P.y - 54, 'too heavy to block', '#ff8a6b');
+  else if (covered) {
+    if (!blockHit(weighCost(o.cost ?? tune.blockCost), srcX)) { sfx.block(); P.blockT = 0.15; P.vx -= A[0] * 150; P.vy -= A[1] * 150; hitstop = Math.max(hitstop, 0.04); spark(lx, ly); }
+    P.bumpSafe = 0.4;
     return 'blocked';
   }
   if (o.soft) { P.vx = Math.sign(P.x - srcX || -P.facing) * 120; P.vy = -120; sfx.bump(); return 'bonk'; }
@@ -323,6 +351,7 @@ function parryFx(sx, sy) {
 function foeStagger(f, time) { setFoeState(f, 'stagger'); f.stagT = time; f.yoff = 0; }
 
 function updateFoes(dt) {
+  if (P.bumpSafe > 0) P.bumpSafe -= dt;
   for (const f of foes) {
     f.t += dt; f.flash = Math.max(0, f.flash - dt); f.cd -= dt; if (f.atkT > 0) f.atkT -= dt;
     if (f.vel) { f.x = Math.max(f.range[0], Math.min(f.range[1], f.x + f.vel * dt)); f.vel *= Math.pow(0.002, dt); if (Math.abs(f.vel) < 2) f.vel = 0; }
@@ -336,7 +365,7 @@ function updateFoes(dt) {
       const gy = groundY(f.x, f.y, 7, 7); if (gy !== null) f.y = gy;
     }
     // touching one hurts (not while it's knocked out or dazed)
-    if (f.state !== 'down' && f.state !== 'stagger' && f.state !== 'hidden' && !(FOE[f.kind].harmless && FOE[f.kind].harmless(f)) && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story) {
+    if (f.state !== 'down' && f.state !== 'stagger' && f.state !== 'hidden' && !(FOE[f.kind].harmless && FOE[f.kind].harmless(f)) && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && !(P.bumpSafe > 0)) {
       const b = foeBox(f), me = { l: bodyL(P.x) + 2, r: bodyR(P.x) - 2, t: P.y - P.h + 4, b: P.y };
       if (overlap(b, me)) { hurt(f.x, f.kind, 1); if (wearing('burr') && f.state !== 'down') { foeStagger(f, 1.0); f.vel = -Math.sign(P.x - f.x || 1) * 60; } }   // the sticky burr pin: whatever bumped him is stuck a moment
     }
@@ -369,8 +398,8 @@ function updateCap(f, dt) {
       if (f.state === 'snap2' && f.t < 0.14) break;                                   // (a beat to gather itself)
       f.x = Math.max(f.range[0], Math.min(f.range[1], f.x + f.f * 220 * dt));
       f.hb = { l: f.x + (f.f > 0 ? 0 : -16), r: f.x + (f.f > 0 ? 16 : 0), t: f.y - 12, b: f.y }; f.atkBox = f.hb; f.atkT = 0.08;
-      if (!f.hitP && phillAround() && overlap(f.hb, { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y })) {
-        f.hitP = true; const out = foeStrike(f.x, 'cap', { cost: 18 });
+      if (!f.hitP && phillAround() && artHit(f, f.hb)) {
+        f.hitP = true; const out = foeStrike(f.x, 'cap', { cost: 18, heavy: f.heavy });
         if (out === 'parried') { foeStagger(f, 1.6); f.vel = -f.f * 120; break; }
         if (out === 'blocked') { f.vel = -f.f * 80; if (f.state === 'lunge' && hasMove(f, 2)) f.again = true; }
       }
@@ -432,7 +461,7 @@ function updateCan(f, dt) {
     case 'shake': if (f.t >= 0.4) { setFoeState(f, 'fizz'); sfx.spit(); } break;       // shaken up...
     case 'fizz': {                                                                     // ...foam spraying out the top at him, up close
       if (Math.random() < dt * 40) part(f.x + f.f * (8 + Math.random() * 30), f.y - 28 + Math.random() * 14, f.f * 60, -30 + Math.random() * 40, 0.35, Math.random() < 0.6 ? '#e0d8f0' : '#8a7aa8', 2, 100);
-      strike(f, { l: Math.min(f.x + f.f * 6, f.x + f.f * 44), r: Math.max(f.x + f.f * 6, f.x + f.f * 44), t: f.y - 40, b: f.y - 14 }, 16);
+      strike(f, { l: Math.min(f.x + f.f * 6, f.x + f.f * 44), r: Math.max(f.x + f.f * 6, f.x + f.f * 44), t: f.y - 40, b: f.y - 14, area: true }, 16);   // (area: the foam's the bits flying out, not part of its picture)
       if (f.t >= 0.5) { setFoeState(f, 'walk'); f.cd = 1.6 + Math.random() * 0.6; }
       break;
     }
@@ -624,15 +653,88 @@ function foeFrame(f) {
   }
 }
 function drawFoes() {
-  for (const f of foes) {
-    if (f.state === 'hidden') continue;
-    if (FOE[f.kind].draw) { FOE[f.kind].draw(f); continue; }
+  for (const f of foes) { if (f.state !== 'hidden') drawOneFoe(f); }
+  for (const s of shots) { if (s.draw) { s.draw(s); continue; } spr(s.kind === 'blob' ? 'blob' : s.kind === 'pblob' ? 'pblob' : s.kind === 'ball' ? 'pblob' : s.kind === 'sand' ? 'sandball' : 'acorn_small', s.x, s.y, false); }
+  for (const d of drops) spr(COIN_SPR[d.kind] || 'acorn_small', d.x, d.y + 3, false);
+}
+function drawOneFoe(f) {
+  {
+    if (FOE[f.kind].draw) { FOE[f.kind].draw(f); return; }
     const shake = /wind$/.test(f.state) || f.state === 'aim' || f.state === 'crouch' || f.state === 'tip' || f.state === 'shake' ? Math.round(Math.sin(f.t * 60)) : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ellipse(f.x, f.y, FOE[f.kind].hw + 1, 1);
     spr(foeFrame(f), f.x + shake, f.y + f.yoff, f.f > 0);
     if (f.flash > 0) { ctx.globalCompositeOperation = 'lighter'; spr(foeFrame(f), f.x, f.y + f.yoff, f.f > 0, 0.6); ctx.globalCompositeOperation = 'source-over'; }
     if (f.state === 'stagger') for (let i = 0; i < 3; i++) { const a = f.t * 8 + i * 2.1; ctx.fillStyle = '#ffd36b'; ctx.fillRect(Math.round(f.x + Math.cos(a) * 7) - 1, Math.round(f.y - FOE[f.kind].h - 6 + Math.sin(a) * 2), 2, 2); }
   }
-  for (const s of shots) { if (s.draw) { s.draw(s); continue; } spr(s.kind === 'blob' ? 'blob' : s.kind === 'pblob' ? 'pblob' : s.kind === 'ball' ? 'pblob' : s.kind === 'sand' ? 'sandball' : 'acorn_small', s.x, s.y, false); }
-  for (const d of drops) spr(COIN_SPR[d.kind] || 'acorn_small', d.x, d.y + 3, false);
+}
+
+// ---- an enemy's hit is where its drawing is (her call, 10/16/2026) ----
+// An attack's box says where it's meant to reach. On its own that's a plain rectangle, often reaching where nothing's
+// drawn, so a hit could land before (or past) the jaws or the rope that's meant to be doing it. Now it only lands where
+// the box and Phill overlap AND the enemy, as it's drawn right then, is solid there: its picture's actual pixels (from
+// art/hitmasks.js), turned, flipped and stretched however it's drawn, plus anything it draws itself in solid colour (a
+// rope, a whip). Its shadow and anything see-through don't count. Turned on enemy by enemy (ART_HITS), region by region
+const ART_HITS = new Set(['cap', 'can', 'spinner', 'wrapper', 'gum', 'lace', 'reacher', 'nwing', 'juice', 'fork', 'sponge',   // Rootwood's first
+  'duck', 'bobber', 'bag', 'frog', 'straw', 'fishtoy', 'glove', 'pike', 'leech',                                    // the pond
+  'teeth', 'jack', 'bucket', 'rope', 'balloon', 'horn',                                                            // the playground
+  'plane', 'ball', 'shuttle', 'rings']);                                                                           // the oak
+const maskCache = new Map();
+function sheetMask(im) {
+  if (!im || !window.HIT_MASKS) return null;
+  if (maskCache.has(im)) return maskCache.get(im);
+  let m = null; const src = decodeURIComponent((im.src || '').split('?')[0]);
+  for (const k in HIT_MASKS) if (src.endsWith(k)) {
+    const [w, h, rows] = HIT_MASKS[k], bits = new Uint8Array(w * h);
+    rows.split('|').forEach((r, y) => { if (!r) return; let x = 0, on = false; for (const t of r.split(',')) { const n = parseInt(t, 36); if (on) bits.fill(1, y * w + x, y * w + x + n); x += n; on = !on; } });
+    m = { w, h, bits }; break;
+  }
+  maskCache.set(im, m); return m;
+}
+const solidStyle = st => typeof st === 'string' && (!st.startsWith('rgba') || parseFloat(st.slice(st.lastIndexOf(',') + 1)) >= 0.9);
+// what it draws right now, without drawing it: each picture and solid rectangle, with how it's placed (a matrix from
+// the world to where it's drawn from)
+function foePose(f) { return poseOf(() => drawOneFoe(f)); }
+function poseOf(draw) {
+  const rec = [], c = ctx, inv = () => { const m = c.getTransform().inverse(); return [m.a, m.b, m.c, m.d, m.e, m.f]; };
+  c.save(); c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage = function (im, ...a) {
+    let sx = 0, sy = 0, sw = im.width, sh = im.height, dx, dy, dw = im.width, dh = im.height;
+    if (a.length >= 8) [sx, sy, sw, sh, dx, dy, dw, dh] = a; else if (a.length >= 4) [dx, dy, dw, dh] = a; else [dx, dy] = a;
+    if (c.globalAlpha >= 0.5 && dw && dh) rec.push({ im, sx, sy, sw, sh, dx, dy, dw, dh, m: inv() });
+  };
+  c.fillRect = function (x, y, w, h) { if (c.globalAlpha >= 0.9 && solidStyle(c.fillStyle)) rec.push({ x: Math.min(x, x + w), y: Math.min(y, y + h), w: Math.abs(w), h: Math.abs(h), m: inv() }); };
+  c.fill = c.stroke = c.strokeRect = c.fillText = c.strokeText = () => {};
+  try { draw(); } catch (e) {}
+  finally { for (const k of ['drawImage', 'fillRect', 'fill', 'stroke', 'strokeRect', 'fillText', 'strokeText']) delete c[k]; c.restore(); }
+  return rec;
+}
+// is any of what it draws solid inside box b (the part of the attack's box that's on Phill)
+function artIn(rec, b) {
+  for (let y = Math.floor(b.t) + 0.5; y < b.b; y++) for (let x = Math.floor(b.l) + 0.5; x < b.r; x++) for (const d of rec) {
+    const [a, bb, cc, dd, e, ff] = d.m, px = a * x + cc * y + e, py = bb * x + dd * y + ff;
+    if (d.im) {
+      if (px < d.dx || py < d.dy || px >= d.dx + d.dw || py >= d.dy + d.dh) continue;
+      const mk = sheetMask(d.im); if (!mk) return true;                          // (a picture we've no mask for: all of it counts)
+      const u = Math.floor(d.sx + (px - d.dx) * d.sw / d.dw), v = Math.floor(d.sy + (py - d.dy) * d.sh / d.dh);
+      if (mk.bits[v * mk.w + u]) return true;
+    } else if (px >= d.x && px < d.x + d.w && py >= d.y && py < d.y + d.h) return true;
+  }
+  return false;
+}
+// does attack box `box` really reach Phill: on him, and on something it's drawing
+function artHit(f, box) {
+  const body = { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y };
+  if (!overlap(box, body)) return false;
+  if (!ART_HITS.has(f.kind) || box.area) return true;                            // (area: a wave, a puff, something that isn't drawn as part of it)
+  const rec = foePose(f); if (!rec.length) return true;
+  return artIn(rec, { l: Math.max(box.l, body.l), r: Math.min(box.r, body.r), t: Math.max(box.t, body.t), b: Math.min(box.b, body.b) });
+}
+// the bosses the same way (10/16/2026): an attack of theirs only lands where what drawBoss() draws is on him. body: the
+// part of him it's checked against (walking into the tin soldier leaves him a little room), his whole body otherwise
+function bossHit(box, body) {
+  body = body || { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y };
+  if (!overlap(box, body)) return false;
+  if (box.area) return true;
+  const rec = poseOf(drawBoss); if (!rec.length) return true;
+  return artIn(rec, { l: Math.max(box.l, body.l), r: Math.min(box.r, body.r), t: Math.max(box.t, body.t), b: Math.min(box.b, body.b) });
 }

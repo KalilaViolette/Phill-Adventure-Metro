@@ -12,6 +12,12 @@ function isWater(x, y) {
   if (ty < 0 || ty >= room.H) { const edge = ty < 0 ? 'top' : 'bottom'; return room.def.doors.some(d => d.edge === edge && d.swim && x >= d.a && x < d.b); }
   return tile(Math.floor(x / T), ty) === 4;
 }
+// water all the way from x0 to x1 at that height (nothing solid in between to swim through)
+function wetWay(x0, x1, y) {
+  const d = Math.sign(x1 - x0) * 8;
+  for (let x = x0; d && Math.abs(x1 - x) > 8; x += d) if (!isWater(x, y)) return false;
+  return isWater(x1, y);
+}
 function surfaceAt(x, y) {                         // the top of the water in this column (null if the water goes right up to a ceiling, or on into the room above)
   const c = Math.floor(x / T); let r = Math.floor(y / T);
   while (r > 0 && tile(c, r - 1) === 4) r--;
@@ -242,7 +248,7 @@ function updateSqueaks(dt) {
       s.hit.add(b); breakOpen(b);
     }
     for (const sh of shots) if (!sh.reflected && Math.hypot(sh.x - s.x, sh.y - s.y) < r) { sh.dead = true; part(sh.x, sh.y, 0, -20, 0.3, '#ffffff', 2, 0); }
-    if (bossFighting() && !s.hit.has('boss') && bossKind() && bossKind().squeaked && bossKind().squeaked(s.x, s.y, r)) s.hit.add('boss');
+    if (bossFighting() && !s.hit.has('boss') && (bossKind() ? bossKind().squeaked && bossKind().squeaked(s.x, s.y, r) : soldierSqueaked(s.x, s.y, r))) s.hit.add('boss');
   }
   for (let i = squeaks.length - 1; i >= 0; i--) if (squeaks[i].t > 0.32) squeaks.splice(i, 1);
 }
@@ -282,9 +288,10 @@ function hopFoe(f, dt, grav = 700) {               // something in the air: fall
 const near = (f, dx, dy) => phillAround() && !(P.story && !P.story.free) && Math.abs(P.x - f.x) < dx && Math.abs(P.y - f.y) < dy;
 const strike = (f, box, cost = 18, dmg = 1) => {
   if (f.state !== 'down') { f.atkBox = box; f.atkT = 0.08; }                          // for the hitbox view: this attack's reach, while it's live (10/16/2026)
-  if (f.state === 'down' || f.hitP || !phillAround() || (P.story && !P.story.free) || !overlap(box, { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y })) return null;   // not in the middle of a little scene
-  f.hitP = true; const out = foeStrike(f.x, f.kind, { cost, dmg, y: (box.t + box.b) / 2 });
+  if (f.state === 'down' || f.hitP || !phillAround() || (P.story && !P.story.free) || !artHit(f, box)) return null;   // not in the middle of a little scene. (On him, and on the part of it that's drawn there: artHit)
+  f.hitP = true; const out = foeStrike(f.x, f.kind, { cost, dmg, y: (box.t + box.b) / 2, heavy: f.heavy });
   if (out === 'parried') { foeStagger(f, 1.4); f.vel = -f.f * 140; }
+  if (out === 'blocked') { f.flash = Math.max(f.flash || 0, 0.08); if (!f.vel && !FOE[f.kind].free) f.vel = -Math.sign(P.x - f.x || f.f) * 60; }   // a block's neutral (her plan): it flinches like any hit, no opening
   return out;
 };
 const wobble = f => (f.state === 'stagger' ? Math.round(Math.sin(f.t * 12) * 1.5) : 0);
@@ -308,7 +315,7 @@ Object.assign(FOE, {
   // the rubber duck: waddles back and forth, then lowers its head and charges. Newer (10/16/2026): if the charge runs
   // into a wall or the end of its ground it turns and charges straight back, a squeak up close that sends a ring out
   // along the ground (jump it), and a leap that comes down on him with a splash
-  duck: { hp: 3, hw: 11, h: 20, acorns: [1, 2], walker: true,
+  duck: { hp: 5, hw: 11, h: 20, acorns: [1, 2], walker: true,
     harmless: f => ['charge', 'leap', 'squeak'].includes(f.state),
     update(f, dt) {
       baseState(f, dt);
@@ -334,7 +341,7 @@ Object.assign(FOE, {
       } else if (f.state === 'puff') { if (f.t >= 0.4) { setFoeState(f, 'squeak'); sfx.squeakBig ? sfx.squeakBig() : sfx.squeak(); ringOut(f.x - f.f * 4, f.y - 4, 60, '#faf0c8'); } }
       else if (f.state === 'squeak') {                                                 // the ring rolls out along the ground both ways: jump it
         const r = 18 + Math.min(1, f.t / 0.3) * 48;
-        if (f.t < 0.3) strike(f, { l: f.x - r, r: f.x + r, t: f.y - 14, b: f.y }, 16);
+        if (f.t < 0.3) strike(f, { l: f.x - r, r: f.x + r, t: f.y - 14, b: f.y, area: true }, 16);   // (area: the ring rolling out, not its picture)
         if (f.t >= 0.6) setFoeState(f, 'rest');
       } else if (f.state === 'crouch') { if (f.t >= 0.35) { setFoeState(f, 'leap'); f.vy = -320; f.hopVX = hopTo(f, P.x, -320); f.yoff = -0.01; sfx.jump(); } }
       else if (f.state === 'leap') {
@@ -351,7 +358,7 @@ Object.assign(FOE, {
 
   // the fishing bobber: bobs at the top of the water, ducks under, pops up near him and spits. Newer (10/16/2026): it
   // casts its hook at him and reels him in, three quick spits in a row, and (from under) pops right up under him
-  bobber: { hp: 2, hw: 7, h: 14, acorns: [1, 2], free: true,
+  bobber: { hp: 4, hw: 7, h: 14, acorns: [1, 2], free: true,
     setup(f) { const s = surfaceAt(f.x, f.y + 4); f.sy = s === null ? f.y : s; f.y = f.sy; f.homeX = f.x; },
     box: f => (f.state === 'under' || f.state === 'sneak' ? { l: -999, r: -998, t: -999, b: -998 } : { l: f.x - 7, r: f.x + 7, t: f.y - 14, b: f.y + 4 }),
     harmless: f => f.state === 'pop',
@@ -360,9 +367,10 @@ Object.assign(FOE, {
       const dx = P.x - f.x;
       if (f.state === 'walk') {
         f.y = f.sy + Math.sin(f.t * 3) * 1.5;
-        f.x += Math.sin(f.t * 0.8) * 10 * dt;
+        const d = Math.sin(f.t * 0.8) * 10 * dt;
+        if (isWater(f.x + d + Math.sign(d) * 7, f.sy + 4)) f.x += d;                    // (its drift kept going one way and carried it up onto the bank in a small pool)
         if (near(f, 200, 160) && f.cd <= 0) {
-          const over = isWater(P.x, f.sy + 4) && P.y > f.sy - 70 && P.y < f.sy + 30 && Math.abs(P.x - f.homeX) < 8 * T;   // he's over (or in) the water near enough to get under
+          const over = isWater(P.x, f.sy + 4) && P.y > f.sy - 70 && P.y < f.sy + 30 && Math.abs(P.x - f.homeX) < 8 * T && wetWay(f.x, P.x, f.sy + 4);   // he's over (or in) the water near enough to get under (its own water, not the next pool over)
           const m = choose([[2, 'under'], [hasMove(f, 2) && near(f, 170, 120) ? 1.3 : 0, 'castwind'], [hasMove(f, 3) ? 1.2 : 0, 'under3'], [hasMove(f, 4) && over ? 1.3 : 0, 'sneak']]);
           f.triple = m === 'under3';
           if (m === 'castwind') { setFoeState(f, 'castwind'); f.f = Math.sign(dx) || f.f; sfx.windup(); }
@@ -370,11 +378,13 @@ Object.assign(FOE, {
         }
       } else if (f.state === 'under') {                                                    // out of sight, drifting over toward him
         const tx = Math.max(f.homeX - 7 * T, Math.min(f.homeX + 7 * T, P.x - Math.sign(dx || 1) * 50));
-        if (isWater(tx, f.sy + 4)) f.x += Math.sign(tx - f.x) * Math.min(Math.abs(tx - f.x), 90 * dt);
+        const nx = f.x + Math.sign(tx - f.x) * Math.min(Math.abs(tx - f.x), 90 * dt);
+        if (isWater(tx, f.sy + 4) && isWater(nx + Math.sign(tx - f.x) * 7, f.sy + 4)) f.x = nx;           // (only through water: it used to slip straight through a stump or a rock in the way and come up inside it)
         if (f.t >= 0.9) { setFoeState(f, 'aim'); f.y = f.sy; splash(f.x, f.sy, 6, 0.6); f.f = Math.sign(dx) || f.f; }
       } else if (f.state === 'sneak') {                                                    // the same, but right under him...
         const tx = Math.max(f.homeX - 8 * T, Math.min(f.homeX + 8 * T, P.x));
-        if (isWater(tx, f.sy + 4)) f.x += Math.sign(tx - f.x) * Math.min(Math.abs(tx - f.x), 130 * dt);
+        const nx = f.x + Math.sign(tx - f.x) * Math.min(Math.abs(tx - f.x), 130 * dt);
+        if (isWater(tx, f.sy + 4) && isWater(nx + Math.sign(tx - f.x) * 7, f.sy + 4)) f.x = nx;
         if (Math.random() < dt * 12) bubblesAt(f.x, f.sy + 6);
         if (f.t >= 0.8 && Math.abs(tx - f.x) < 6) { setFoeState(f, 'pop'); f.y = f.sy + 8; splash(f.x, f.sy, 10, 0.9); sfx.splash(1); }
         else if (f.t >= 1.6) { setFoeState(f, 'aim'); f.y = f.sy; }
@@ -424,7 +434,7 @@ Object.assign(FOE, {
   // the plastic bag: drifts toward him like a jellyfish, then billows out at him. Newer (10/16/2026): a billow that
   // lands half the time wraps it round him (mash free before it squeezes), it rides a gust in a swoop across at him,
   // and it blows itself up and bursts the air out at him, shoving him back
-  bag: { hp: 2, hw: 10, h: 22, acorns: [1, 1], free: true,
+  bag: { hp: 4, hw: 10, h: 22, acorns: [1, 1], free: true,
     setup(f) { f.y -= 20; f.hx = f.x; f.hy = f.y; },
     box: f => (f.state === 'wrap' ? { l: -999, r: -998, t: -999, b: -998 } : f.state === 'inflate' || f.state === 'blast' ? { l: f.x - 14, r: f.x + 14, t: f.y - 30, b: f.y - 4 } : { l: f.x - 10, r: f.x + 10, t: f.y - 26, b: f.y - 6 }),
     harmless: f => ['billow', 'gust', 'wrap', 'blast'].includes(f.state),
@@ -467,7 +477,7 @@ Object.assign(FOE, {
           if (d < 90 && phillAround() && !(P.story && !P.story.free)) {
             const covered = guardUp() && Math.sign(f.x - P.x) === P.facing;
             if (covered) { P.recoilT = 0.15; P.recoilV = -P.facing * 200; sfx.block(); }
-            else { strike(f, { l: P.x - 4, r: P.x + 4, t: P.y - 30, b: P.y }, 14); if (P.hurtT > 0 || P.inv > 0) { P.vx = Math.sign(P.x - f.x || 1) * 300; P.vy = Math.min(P.vy, -200); P.ground = false; } }
+            else { strike(f, { l: P.x - 4, r: P.x + 4, t: P.y - 30, b: P.y, area: true }, 14);   /* (area: the blast) */ if (P.hurtT > 0 || P.inv > 0) { P.vx = Math.sign(P.x - f.x || 1) * 300; P.vy = Math.min(P.vy, -200); P.ground = false; } }
           }
         }
       } else if (f.state === 'blast') { if (f.t >= 0.5) { setFoeState(f, 'walk'); f.cd = 1.8 + Math.random(); } }
@@ -486,7 +496,7 @@ Object.assign(FOE, {
   // the wind-up tin frog: sits, crouches, hops at him in arcs. Newer (10/16/2026): a high hop that comes down in a
   // belly flop and sends a shock along the ground (jump it), three quick hops in a row, and (a region out, so every
   // Pond frog) a huge leap right up off the screen that comes down where he is, its shadow on the ground the warning
-  frog: { hp: 3, hw: 9, h: 14, acorns: [1, 2], leaps: true,
+  frog: { hp: 5, hw: 9, h: 14, acorns: [1, 2], leaps: true,
     box: f => (f.state === 'sky' ? { l: -999, r: -998, t: -999, b: -998 } : { l: f.x - 9, r: f.x + 9, t: f.y - 14, b: f.y }),
     harmless: f => f.state === 'sky' || f.state === 'quake',
     update(f, dt) {
@@ -523,7 +533,7 @@ Object.assign(FOE, {
         sfx.hop();
       } else if (f.state === 'bigcrouch') { if (f.t >= 0.55) { setFoeState(f, 'sky'); sfx.boing(); puff(f.x, f.y, 6, 40); f.tx = P.x; } }
       else if (f.state === 'quake') {                                                   // the shock along the ground, both ways
-        if (f.t < 0.18) strike(f, { l: f.x - 52, r: f.x + 52, t: f.y - 10, b: f.y + 2 }, 16);
+        if (f.t < 0.18) strike(f, { l: f.x - 52, r: f.x + 52, t: f.y - 10, b: f.y + 2, area: true }, 16);   // (area: the shock along the ground)
         if (f.t >= 0.5) { setFoeState(f, 'walk'); f.cd = 0.9 + Math.random() * 0.6; }
       }
     },
@@ -544,7 +554,7 @@ Object.assign(FOE, {
   // the soggy sponge: soaks up plain swings, squishes down and springs at him. Newer (10/16/2026): it wrings itself out
   // at him (a drop of that soaks him through, slow and dripping), tumbles end over end at him, and (in the Pond and
   // further, not the sunk roots) jumps up and pounds down, the water bursting out along the ground both ways (jump it)
-  sponge: { hp: 4, hw: 10, h: 16, acorns: [2, 3], soak: true,
+  sponge: { hp: 5, hw: 10, h: 16, acorns: [2, 3], soak: true,
     harmless: f => f.state === 'tumble' || f.state === 'splash',
     update(f, dt) {
       baseState(f, dt);
@@ -578,7 +588,7 @@ Object.assign(FOE, {
       } else if (f.state === 'rest' && f.t >= 0.7) { setFoeState(f, 'walk'); f.cd = 1.2 + Math.random() * 0.6; }
       else if (f.state === 'poundcrouch' && f.t >= 0.4) { setFoeState(f, 'spring'); f.air = true; f.pound = true; f.vy = wet ? -260 : -380; f.hopVX = Math.max(-150, Math.min(150, (P.x - f.x) / (2 * -f.vy / (wet ? 500 : 800)))); sfx.hop(); }
       else if (f.state === 'splash') {
-        if (f.t < 0.2) strike(f, { l: f.x - 46, r: f.x + 46, t: f.y - 10, b: f.y + 2 }, 16);
+        if (f.t < 0.2) strike(f, { l: f.x - 46, r: f.x + 46, t: f.y - 10, b: f.y + 2, area: true }, 16);   // (area: the splash, not its picture)
         if (f.t >= 0.5) { setFoeState(f, 'walk'); f.cd = 1.2 + Math.random() * 0.6; }
       }
     },
@@ -587,7 +597,7 @@ Object.assign(FOE, {
   // the bendy straw: slithers along the ground, coils up and lunges. Newer (10/16/2026): spits a blob at him through
   // itself, arches up into a hoop and flips right over him to lunge from behind, and (a region out) blows a stream of
   // bubbles that drift after him
-  straw: { hp: 2, hw: 14, h: 8, acorns: [1, 1], walker: true,
+  straw: { hp: 4, hw: 14, h: 8, acorns: [1, 1], walker: true,
     harmless: f => f.state === 'arch',
     update(f, dt) {
       baseState(f, dt);
@@ -633,7 +643,7 @@ Object.assign(FOE, {
   // the wind-up bath fish: a tin toy that swims after him underwater, circling and keeping its painted tin face to him
   // (the sword just clanks off that). It winds itself up, aims and lunges. Swim-dash past the lunge and it shoots on by,
   // and tin's slow to turn round: hit it from behind while it does. Lunge into the mud and it knocks itself silly
-  fishtoy: { hp: 3, hw: 11, h: 15, acorns: [2, 3], free: true,
+  fishtoy: { hp: 5, hw: 11, h: 15, acorns: [2, 3], free: true,
     setup(f) { f.y -= 4; f.hx = f.x; f.hy = f.y; f.ang = 0; f.last = [f.x, f.y]; f.orb = Math.random() * 6; },
     box: f => ({ l: f.x - 11, r: f.x + 11, t: f.y - 16, b: f.y - 2 }),
     deflectText: 'it clanks off its tin face. get round behind it',
@@ -722,7 +732,7 @@ Object.assign(FOE, {
   // the rubber glove jelly: a washing up glove full of Grime, drifting after him underwater in little pulses like a
   // jellyfish. Touch its fingers and they sting. The sword just squishes into it. A squeak gives it a fright: it puffs
   // up like a balloon and floats up to the top, stiff and harmless, and that's when it can be hit
-  glove: { hp: 2, hw: 10, h: 22, acorns: [1, 2], free: true, fit: [10, 20, -10],
+  glove: { hp: 4, hw: 10, h: 22, acorns: [1, 2], free: true, fit: [10, 20, -10],
     setup(f) { f.y -= 6; f.hx = f.x; f.hy = f.y; f.vx = 0; f.vy = 0; f.pt = Math.random() * 0.8; f.last = [f.x, f.y]; },
     box: f => (f.state === 'puff' ? { l: f.x - 11, r: f.x + 11, t: f.y - 20, b: f.y + 4 } : { l: f.x - 9, r: f.x + 9, t: f.y - 20, b: f.y + 12 }),
     harmless: f => ['puff', 'grab', 'hold', 'slap'].includes(f.state),
@@ -750,7 +760,7 @@ Object.assign(FOE, {
       const hunting = P.swim && phillAround() && !(P.story && !P.story.free) && d < 260;
       // its newer three (10/16/2026): a grab that holds on and squeezes (mash free), a slap, and a cloud of Grime
       if (f.state === 'walk' && hunting && f.cd <= 0 && d < 110) {
-        const m = choose([[hasMove(f, 2) && d < 70 ? 1.3 : 0, 'grabwind'], [hasMove(f, 3) && d < 60 ? 1.3 : 0, 'slapwind'], [hasMove(f, 4) ? 1 : 0, 'inkwind']]);
+        const m = choose([[hasMove(f, 2) && d < 70 ? 1.3 : 0, 'grabwind'], [hasMove(f, 3) && d < 40 ? 1.3 : 0, 'slapwind'], [hasMove(f, 4) ? 1 : 0, 'inkwind']]);
         if (m) { setFoeState(f, m); f.f = Math.sign(dx) || f.f; f.vx = f.vy = 0; m === 'inkwind' ? sfx.inflate() : sfx.squelch ? sfx.squelch() : sfx.splort(); }
         else f.cd = 0.4;
       }
@@ -768,7 +778,7 @@ Object.assign(FOE, {
         if (f.t >= 1.6) { P.pinned = null; hurt(f.x, 'glove', 1); setFoeState(f, 'walk'); f.cd = 1.8; }
         f.last = [f.x, f.y]; return;
       }
-      if (f.state === 'slapwind') { f.f = Math.sign(dx) || f.f; if (f.t >= 0.35) { setFoeState(f, 'slap'); sfx.swish(); } f.last = [f.x, f.y]; return; }
+      if (f.state === 'slapwind') { f.f = Math.sign(dx) || f.f; if (d > 20) fishMove(f, f.f * 40 * dt, Math.sign(dy) * Math.min(Math.abs(dy), 20 * dt));   /* drifting in on the wind up: the drawn slap reaches about 17 out (10/16/2026) */ if (f.t >= 0.35) { setFoeState(f, 'slap'); sfx.swish(); } f.last = [f.x, f.y]; return; }
       if (f.state === 'slap') {                                                          // swung round flat at him
         if (f.t < 0.2) strike(f, { l: Math.min(f.x, f.x + f.f * 36), r: Math.max(f.x, f.x + f.f * 36), t: f.y - 8, b: f.y + 14 }, 18);
         if (f.t >= 0.45) { setFoeState(f, 'walk'); f.cd = 1.4 + Math.random() * 0.5; }
@@ -813,7 +823,7 @@ Object.assign(FOE, {
   // to keep its nose on him, then darts at him fast in a straight line. The sword bounces off the glass. Get it to
   // dart into the mud and its neck sticks in it for a couple of seconds: that's when it can be hit. A squeak while
   // it's aiming puts it off its aim
-  pike: { hp: 3, hw: 14, h: 14, acorns: [2, 3], free: true, fit: [14, 14, 2],
+  pike: { hp: 5, hw: 14, h: 14, acorns: [2, 3], free: true, fit: [14, 14, 2],
     setup(f) { f.y -= 4; f.hx = f.x; f.hy = f.y; f.ang = 0; f.last = [f.x, f.y]; f.cd = 1.5 + Math.random(); },
     box: f => (f.state === 'split' ? { l: -999, r: -998, t: -999, b: -998 } : { l: f.x - 15, r: f.x + 15, t: f.y - 15, b: f.y - 2 }),
     harmless: () => true,                                                                  // only the dart hurts (and that can be blocked)
@@ -919,7 +929,7 @@ Object.assign(FOE, {
   // the gum leech: a wad of chewed bubblegum stretched out into a leech. It wiggles after him underwater and lunges,
   // and if it touches him it sticks on: he swims slow and it drinks a bit of his fluff every couple of seconds. The
   // sword just sticks in the gum. Swim-dash and it gets shaken off, flung away dazed, and that's when it can be hit
-  leech: { hp: 2, hw: 9, h: 10, acorns: [1, 2], free: true, fit: [10, 12, 2],
+  leech: { hp: 4, hw: 9, h: 10, acorns: [1, 2], free: true, fit: [10, 12, 2],
     setup(f) { f.y -= 4; f.hx = f.x; f.hy = f.y; f.last = [f.x, f.y]; f.vx = 0; f.vy = 0; },
     box: f => (f.state === 'latch' ? { l: -999, r: -998, t: -999, b: -998 } : { l: f.x - 12, r: f.x + 12, t: f.y - 12, b: f.y - 2 }),
     harmless: () => true,                                                                  // it doesn't hit, it sticks
@@ -958,7 +968,7 @@ Object.assign(FOE, {
           fishMove(f, (dx / d * 70 - dy / d * w) * dt, (dy / d * 70 + dx / d * w) * dt);
           f.f = Math.sign(dx) || f.f;
           if (f.state === 'walk' && f.cd <= 0 && d < 200) {                                 // its newer three (10/16/2026): a glob of gum spat at him, a band it stretches out to snare him, and a bubble it traps him in
-            const m = choose([[d < 60 ? 2 : 0, 'lunge'], [hasMove(f, 2) && d > 60 ? 1.2 : 0, 'spitwind'], [hasMove(f, 3) && d < 110 && Math.abs(dy) < 30 ? 1.3 : 0, 'bandwind'], [hasMove(f, 4) && d > 50 && d < 180 ? 1 : 0, 'blowwind']]);
+            const m = choose([[d < 60 ? 2 : 0, 'lunge'], [hasMove(f, 2) && d > 60 ? 1.2 : 0, 'spitwind'], [hasMove(f, 3) && d < 54 && Math.abs(dy) < 30 ? 1.3 : 0, 'bandwind'], [hasMove(f, 4) && d > 50 && d < 180 ? 1 : 0, 'blowwind']]);
             if (m === 'lunge') { setFoeState(f, 'lunge'); f.ldx = dx / d; f.ldy = dy / d; sfx.hiss(); }
             else if (m) { setFoeState(f, m); f.f = Math.sign(dx) || f.f; sfx.squelch ? sfx.squelch() : sfx.splort(); }
           }

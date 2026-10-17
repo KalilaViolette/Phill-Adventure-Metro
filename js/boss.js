@@ -45,6 +45,13 @@ function bossWalls(on) {
   boss.walled = on;
 }
 const bossBox = () => ({ l: boss.x - 15, r: boss.x + 15, t: boss.y - 84, b: boss.y });
+// ---- every boss by Phill's rules now (her call, 10/16/2026: the boss combat audit) ----
+const swingOn = (box, hb) => overlap(box, hb) && swordHits(hb);                 // his hit lands where the sword is as it's drawn, like on the regular enemies
+const bossDmg = (table, a) => (table[a.type] || 1) + (a.level || 0);            // a charged step deep in the combo: one more for each step in
+function bossBigTell(x, y) { popup(x, y, '!!', '#ff6b5a', true); sfx.heavyWindup(); }   // winding up the move the shield can't take
+// that move landing: too heavy to block (it says so), a parry still answers it, a roll gets out of the way
+const bossHeavy = (x, kind, dmg, y) => foeStrike(x, kind, { cost: 34, heavy: true, dmg, y });
+const bossBumpOk = () => !(P.bumpSafe > 0);                                     // just after a block, bumping into it doesn't hurt him either
 
 function updateBoss(dt) {
   const b = boss;
@@ -72,7 +79,7 @@ function updateBoss(dt) {
     case 'idle':
       if (b.cd > 0) break;
       facePhill();
-      if (b.phase === 2 && dist > 150 && Math.random() < 0.6) { bossState('chargeWind'); sfx.ticking(); break; }
+      if (b.phase === 2 && dist > 150 && Math.random() < 0.6) { bossState('chargeWind'); sfx.ticking(); bossBigTell(b.x, b.y - 100); break; }
       if (dist > SOL.reach + 6) { bossState('march'); break; }
       if (Math.random() < 0.32) { bossState('raise'); sfx.heavyWindup(); popup(b.x, b.y - 100, '!!', '#ff6b5a', true); break; }
       b.combo = b.phase === 2 ? 3 : 1; bossState('aim'); sfx.windup();
@@ -93,10 +100,10 @@ function updateBoss(dt) {
     }
     case 'thrust': {
       b.x = Math.max(4 * T, Math.min(room.pxW - 4 * T, b.x + b.f * 260 * dt));
-      b.hb = { l: b.f > 0 ? b.x + 10 : b.x - SOL.reach, r: b.f > 0 ? b.x + SOL.reach : b.x - 10, t: b.y - 60, b: b.y - 30 };
-      if (!b.hitP && phillAround() && overlap(b.hb, { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y })) {
+      b.hb = { l: b.f > 0 ? b.x + 10 : b.x - SOL.reach, r: b.f > 0 ? b.x + SOL.reach : b.x - 10, t: b.y - 46, b: b.y - 6 };   // the thrust goes in low at him now (it's drawn that way: it went over his head)
+      if (!b.hitP && phillAround() && bossHit(b.hb)) {
         b.hitP = true;
-        const out = foeStrike(b.x, 'soldier', { cost: 34 });
+        const out = foeStrike(b.x, 'soldier', { cost: 20 });                    // a normal hit to block: three in a row empties the shield, it doesn't break it
         if (out === 'parried') { bossStagger(SOL.stagger); popup(b.x, b.y - 100, 'knocked off his feet', '#ffd36b'); break; }
         if (out === 'blocked') { P.vx = -P.facing * 160; }
       }
@@ -113,7 +120,7 @@ function updateBoss(dt) {
         b.slammed = true; shakeT = 0.3; shakeA = 4; sfx.slam(); puff(b.x + b.f * 30, b.y, 14, 90, '#4a3462');
         b.waves.push({ x: b.x + b.f * 30, v: b.f * 250, t: 0 }); if (b.phase === 2) b.waves.push({ x: b.x - b.f * 10, v: -b.f * 250, t: 0 });
         b.hb = { l: b.x + (b.f > 0 ? 0 : -50), r: b.x + (b.f > 0 ? 50 : 0), t: b.y - 40, b: b.y };
-        if (phillAround() && overlap(b.hb, { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y })) hurt(b.x, 'soldier', 2);
+        if (phillAround() && bossHit(b.hb) && bossHeavy(b.x, 'soldier', 2) === 'parried') { b.slammed = false; bossStagger(SOL.stagger); popup(b.x, b.y - 100, 'knocked off his feet', '#ffd36b'); break; }
       }
       if (b.t >= 0.7) { b.slammed = false; bossState('idle'); b.cd = 0.5; }
       break;
@@ -123,11 +130,9 @@ function updateBoss(dt) {
     case 'charge': {
       b.x += b.f * 330 * dt;
       b.hb = { l: b.f > 0 ? b.x : b.x - 50, r: b.f > 0 ? b.x + 50 : b.x, t: b.y - 64, b: b.y - 20 };
-      if (!b.hitP && phillAround() && overlap(b.hb, { l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y })) {
+      if (!b.hitP && phillAround() && bossHit(b.hb)) {
         b.hitP = true;
-        const covered = guardUp() && Math.sign(b.x - P.x) === P.facing;
-        if (covered && P.parryT > 0 && tune.parryWindow - P.parryT <= 0.1) { parryFx(P.x + P.facing * 13, P.y - 26); bossStagger(2.4); popup(b.x, b.y - 100, 'knocked flat', '#ffd36b'); break; }
-        if (!dodgeSafe() && P.inv <= 0) { if (covered) popup(P.x, P.y - 54, 'too heavy to block', '#ff8a6b'); hurt(b.x, 'soldier', 2); }
+        if (bossHeavy(b.x, 'soldier', 2) === 'parried') { bossStagger(2.4); popup(b.x, b.y - 100, 'knocked flat', '#ffd36b'); break; }   // (the normal parry window now, not its own tighter one)
       }
       if (b.x < 4 * T + 2 || b.x > room.pxW - 4 * T - 2) {                        // into the wall: clang, dazed
         b.x = Math.max(4 * T, Math.min(room.pxW - 4 * T, b.x)); shakeT = 0.3; shakeA = 4; sfx.clank(); sfx.thud();
@@ -141,7 +146,13 @@ function updateBoss(dt) {
   // walking into him hurts. Rolling doesn't: he's tall and there's a gap between his legs, so a roll (or crawling, or just
   // coming up out of one) takes Phill under him to the other side (his friend's playtest, 10/14/2026)
   const under = P.roll > 0 || P.rollEndT > 0 || P.h <= ROLL_H;
-  if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && !under && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(bossBox(), { l: bodyL(P.x) + 3, r: bodyR(P.x) - 3, t: P.y - P.h + 4, b: P.y })) hurt(b.x, 'soldier', 1);
+  if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && !under && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossBumpOk() && bossHit(bossBox(), { l: bodyL(P.x) + 3, r: bodyR(P.x) - 3, t: P.y - P.h + 4, b: P.y })) hurt(b.x, 'soldier', 1);
+}
+// a squeak at him: he's tin, it just rings off him (it did nothing before, and nothing said so)
+function soldierSqueaked(x, y, r) {
+  const b = boss; if (Math.abs(b.x - x) > r + 30) return false;
+  sfx.clank(); if (!b.toldSqueak) { b.toldSqueak = 1; popup(b.x, b.y - 100, 'it just rings off his tin', '#cfd6e6'); }
+  return true;
 }
 function bossStagger(time) { bossState('stagger'); boss.stagT = time; boss.vel = -boss.f * 90; sfx.clank(); }
 
@@ -149,7 +160,7 @@ function bossHits(box, a) {
   const b = boss;
   if (!b || b.state === 'gone' || b.state === 'falling' || b.state === 'dormant' || a.hit.has('boss')) return;
   if (bossKind()) { bossKind().hits(box, a); return; }
-  if (!overlap(box, bossBox())) return;
+  if (!swingOn(box, bossBox())) return;
   a.hit.add('boss'); a.stopLunge = true;
   const cx = b.x - P.facing * 10, cy = Math.max(b.y - 80, Math.min(b.y - 10, P.y - 20));
   if (b.state !== 'stagger') {                                                 // tin all over: clank
@@ -158,7 +169,7 @@ function bossHits(box, a) {
     if (a.type === 'down') pogo();
     return;
   }
-  b.hp -= (BOSS_DMG[a.type] || 1) * swordBonus() * (a.scale || 1); b.flash = 0.12; spark(cx, cy); spark(cx, cy - 8);
+  b.hp -= bossDmg(BOSS_DMG, a) * swordBonus() * (a.scale || 1); b.flash = 0.12; spark(cx, cy); spark(cx, cy - 8);
   hitstop = Math.max(hitstop, isCharged(a.type) ? 0.12 : 0.06); shakeT = 0.12; shakeA = 2; sfx.hit(); rally();
   if (a.type === 'down') pogo();
   for (let i = 0; i < 6; i++) part(cx, cy, (Math.random() * 2 - 1) * 90, -Math.random() * 90, 0.5, '#2c1c3c', 2, 300);

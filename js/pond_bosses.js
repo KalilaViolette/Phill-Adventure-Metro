@@ -6,10 +6,10 @@ const PB_DMG = { side: 1, up: 1, low: 1, down: 1, rollslash: 2, charged: 4, char
 const me = () => ({ l: bodyL(P.x), r: bodyR(P.x), t: P.y - P.h, b: P.y });
 function pbHit(box, a, hurtBox, onHit) {          // his sword reaching one of them
   const b = boss;
-  if (!overlap(box, hurtBox)) return;
+  if (!swingOn(box, hurtBox)) return;
   a.hit.add('boss'); a.stopLunge = true;
   const K = bossKind(), cx = Math.max(hurtBox.l, Math.min(hurtBox.r, P.x + P.facing * 16)), cy = Math.max(hurtBox.t, Math.min(hurtBox.b, P.y - 20));
-  const dmg = (PB_DMG[a.type] || 1) * swordBonus() * (b.state === 'stagger' ? 1.5 : 1) * (a.scale || 1);   // scale: the spin's follow-up hits are weaker
+  const dmg = bossDmg(PB_DMG, a) * swordBonus() * (b.state === 'stagger' ? 1.5 : 1) * (a.scale || 1);   // scale: the spin's follow-up hits are weaker
   b.hp -= dmg; b.flash = 0.12; spark(cx, cy);
   hitstop = Math.max(hitstop, isCharged(a.type) ? 0.12 : 0.05); shakeT = 0.1; shakeA = 2; sfx.hit(); rally();
   if (a.type === 'down') pogo(); else { P.recoilT = 0.08; P.recoilV = -P.facing * 120; }
@@ -84,15 +84,15 @@ BOSS_KINDS.sailboat = {
         if (b.cd <= 0) {
           const r = Math.random();
           if (Math.abs(dx) < 120 && r < 0.55) { bossState('swingWind'); sfx.creak(); popup(b.x, b.y - 120, '!', '#ff6b5a', true); b.f = Math.sign(dx) || b.f; }
-          else if (b.phase === 2 && r < 0.35) { bossState('ramWind'); b.f = Math.sign(dx) || b.f; sfx.creak(); }
+          else if (b.phase === 2 && r < 0.35) { bossState('ramWind'); b.f = Math.sign(dx) || b.f; sfx.creak(); bossBigTell(b.x, b.y - 120); }
           else { bossState('aim'); b.f = Math.sign(dx) || b.f; sfx.windup(); b.shots = b.phase === 2 ? 2 : 1; }
         }
         break;
       case 'swingWind': if (b.t >= 0.6 / fast) { bossState('swing'); sfx.whip(); } break;
       case 'swing': {                                                                // the boom sweeping across the pads, low
         const reach = 100, hb = { l: b.f < 0 ? b.x - reach : b.x - 10, r: b.f < 0 ? b.x + 10 : b.x + reach, t: b.y - 40, b: b.y - 14 };
-        if (!b.hitP && phillAround() && overlap(hb, me())) {
-          b.hitP = true; const out = foeStrike(b.x, 'sailboat', { cost: 30 });
+        if (!b.hitP && phillAround() && bossHit(hb)) {
+          b.hitP = true; const out = foeStrike(b.x, 'sailboat', { cost: 20, y: (hb.t + hb.b) / 2 });   // (y: where it comes from, for the lid in the water)
           if (out === 'parried') { pbStagger(2.0, 'knocked over on its side'); break; }
         }
         if (b.t >= 0.35) { bossState('idle'); b.cd = 0.9 + Math.random() * 0.6; }
@@ -113,13 +113,13 @@ BOSS_KINDS.sailboat = {
       case 'ram':
         sail(260);
         if (Math.random() < dt * 30) part(b.x - b.f * 50, b.y, -b.f * 60, -60, 0.4, '#c4e6e0', 2, 400);
-        if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && overlap({ l: b.x - 50, r: b.x + 50, t: b.y - 30, b: b.y + 4 }, me())) { b.hitP = true; hurt(b.x, 'sailboat', 1); }
+        if (!b.hitP && phillAround() && P.inv <= 0 && !dodgeSafe() && bossHit({ l: b.x - 50, r: b.x + 50, t: b.y - 30, b: b.y + 4 })) { b.hitP = true; if (bossHeavy(b.x, 'sailboat', 1, b.y - 13) === 'parried') pbStagger(2.0, 'knocked over on its side'); }   // its move the shield can't take
         if (b.t >= 1.3) { bossState('idle'); b.cd = 0.8; }
         break;
       case 'stagger': if (b.t >= b.stagT) { bossState('idle'); b.cd = 0.5; } break;
     }
     // bumping into the hull
-    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && b.state !== 'ram' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap({ l: b.x - 44, r: b.x + 44, t: b.y - 24, b: b.y + 4 }, me())) hurt(b.x, 'sailboat', 1);
+    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && b.state !== 'ram' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossBumpOk() && bossHit({ l: b.x - 44, r: b.x + 44, t: b.y - 24, b: b.y + 4 })) hurt(b.x, 'sailboat', 1);
   },
   hits(box, a) { pbHit(box, a, this.hurtBox()); },
   squeaked(x, y, r) { const b = boss; if (Math.abs(b.x - x) > r + 50 || b.state === 'stagger') return false; pbStagger(0.6); return true; },
@@ -166,7 +166,7 @@ BOSS_KINDS.tangle = {
       case 'idle':
         if (b.cd <= 0) {
           const r = Math.random(), d = Math.hypot(dx, dy);
-          if (d < 150 && r < 0.5) { bossState('lashWind'); b.target = { x: P.x, y: P.y - 10 }; b.f = Math.sign(dx) || 1; sfx.reel(); }
+          if (d < 150 && r < 0.5) { bossState('lashWind'); b.target = { x: P.x, y: P.y - 10 }; b.f = Math.sign(dx) || 1; sfx.reel(); popup(k.x, k.y - 44, '!', '#ff6b5a', true); }
           else if (r < 0.75 || !b.lures.length) { bossState('lure'); sfx.whip(); }
           else { bossState('reel'); sfx.reel(); }
         }
@@ -177,7 +177,7 @@ BOSS_KINDS.tangle = {
         b.lashEnd = [ex, ey];
         const px = P.x, py = P.y - 10, vx = ex - k.x, vy = ey - k.y, L2 = vx * vx + vy * vy || 1, u = Math.max(0, Math.min(1, ((px - k.x) * vx + (py - k.y) * vy) / L2));
         if (!b.hitP && phillAround() && Math.hypot(k.x + vx * u - px, k.y + vy * u - py) < 12) {
-          b.hitP = true; const out = foeStrike(k.x, 'tangle', { cost: 24 });
+          b.hitP = true; const out = foeStrike(k.x, 'tangle', { cost: 20, y: k.y });
           if (out === 'parried') { pbStagger(2.0, 'the knot comes loose'); b.lashEnd = null; break; }
         }
         if (b.t >= 0.3) { b.lashEnd = null; bossState('idle'); b.cd = 0.6 + Math.random() * 0.5; }
@@ -192,7 +192,7 @@ BOSS_KINDS.tangle = {
         break;
       case 'reel':                                                                  // pulling him in close, then the lines snap at him
         if (phillAround() && b.t < 1.0) { P.vx += -Math.sign(dx) * 260 * dt; P.vy += -Math.sign(dy) * 160 * dt; }
-        if (b.t >= 1.0 && !b.snapped) { b.snapped = true; shakeT = 0.2; shakeA = 2; sfx.whip(); if (phillAround() && Math.hypot(dx, dy) < 60) { const out = foeStrike(k.x, 'tangle', { cost: 30 }); if (out === 'parried') pbStagger(2.0, 'the knot comes loose'); } }
+        if (b.t >= 1.0 && !b.snapped) { b.snapped = true; shakeT = 0.2; shakeA = 2; sfx.whip(); if (phillAround() && Math.hypot(dx, dy) < 60) { const out = foeStrike(k.x, 'tangle', { cost: 20, y: k.y }); if (out === 'parried') pbStagger(2.0, 'the knot comes loose'); } }
         if (b.t >= 1.4) { b.snapped = false; if (b.state === 'reel') { bossState('idle'); b.cd = 0.8; } }
         break;
       case 'stagger': if (b.t >= b.stagT) { bossState('idle'); b.cd = 0.5; } break;
@@ -200,20 +200,20 @@ BOSS_KINDS.tangle = {
         if (b.t >= TANGLE_BRISTLE_WIND && !b.snapped) {
           b.snapped = true; shakeT = 0.25; shakeA = 3; sfx.whip(); setTimeout(() => sfx.whip(), 60);
           for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; part(k.x + Math.cos(a) * 20, k.y + Math.sin(a) * 20, Math.cos(a) * 260, Math.sin(a) * 260, 0.25, '#c8d6d6', 1, 0); }
-          if (phillAround() && Math.hypot(dx, dy) < TANGLE_BRISTLE_R) { const out = foeStrike(k.x, 'tangle', { cost: 34 }); if (out === 'parried') { pbStagger(2.0, 'the knot comes loose'); b.snapped = false; break; } }
+          if (phillAround() && Math.hypot(dx, dy) < TANGLE_BRISTLE_R) { const out = bossHeavy(k.x, 'tangle', 1, k.y); if (out === 'parried') { pbStagger(2.0, 'the knot comes loose'); b.snapped = false; break; } }   // its move the shield can't take
           b.tightT = TANGLE_TIGHT;
         }
         if (b.t >= TANGLE_BRISTLE_WIND + 0.3) { b.snapped = false; bossState('idle'); b.cd = 0.5; }
         break;
     }
     b.tightT = Math.max(0, (b.tightT || 0) - dt);
-    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(K.hurtBox(), me())) hurt(k.x, 'tangle', 1);
+    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossBumpOk() && bossHit(K.hurtBox())) hurt(k.x, 'tangle', 1);
   },
   hits(box, a) {
     const b = boss;
     for (const L of b.lures) if (overlap(box, { l: L.x - 8, r: L.x + 8, t: L.y - 8, b: L.y + 8 })) { L.life = 0; spark(L.x, L.y); sfx.tink(); popup(L.x, L.y - 14, 'snip', '#e8e6f0'); }   // cut the lure off
     if (b.state === 'stagger' || b.state === 'falling') { pbHit(box, a, this.hurtBox()); return; }   // loose: everything counts
-    if (!overlap(box, this.hurtBox())) return;
+    if (!swingOn(box, this.hurtBox())) return;
     if (b.tightT > 0 || b.state === 'bristle') {                                   // pulled tight: the sword glances off
       a.hit.add('boss'); a.stopLunge = true; const k = this.knot(); spark(k.x - P.facing * 14, k.y); sfx.tink(); P.recoilT = 0.1; P.recoilV = -P.facing * 180;
       if (!b.toldTight) { b.toldTight = 1; popup(P.x, P.y - 54, "it's pulled tight. wait for an opening", '#cfd6e6'); }
@@ -223,7 +223,7 @@ BOSS_KINDS.tangle = {
     b.pokes = (b.pokes || []).filter(t => now - t < TANGLE_POKE_TIME); b.pokes.push(now);
     const half = Object.assign({}, a, { scale: (a.scale || 1) * 0.5 });             // hacking at it outside an opening only does half
     pbHit(box, half, this.hurtBox()); a.stopLunge = true;
-    if (b.hp > 0 && b.pokes.length >= TANGLE_POKES) { b.pokes = []; bossState('bristle'); sfx.reel(); const k = this.knot(); popup(k.x, k.y - 44, 'it pulls its lines tight', '#ff8a6b'); }
+    if (b.hp > 0 && b.pokes.length >= TANGLE_POKES) { b.pokes = []; bossState('bristle'); sfx.reel(); const k = this.knot(); popup(k.x, k.y - 44, 'it pulls its lines tight', '#ff8a6b'); bossBigTell(k.x, k.y - 58); }
   },
   squeaked(x, y, r) { const k = this.knot(); if (Math.hypot(k.x - x, k.y - y) > r + 30 || boss.state === 'stagger') return false; pbStagger(1.0, 'it shudders'); return true; },
   draw() {
@@ -270,7 +270,7 @@ BOSS_KINDS.swan = {
       if (b.y >= b.base) {
         b.y = b.base; b.air = false; b.vy = 0; shakeT = 0.3; shakeA = 4; sfx.slam(); splash(b.x, b.base - 6, 20, 1.6);
         for (const v of [-1, 1]) { b.waves.push({ x: b.x + v * 50, y: SURF, v: v * 220 * fast }); b.waves.push({ x: b.x + v * 50, y: 26 * T, v: v * 220 * fast }); }   // along the top of the water (dive under it or leap it) and along the rim
-        if (phillAround() && overlap(this.hurtBox(), me())) hurt(b.x, 'swan', 2);
+        if (phillAround() && bossHit(this.hurtBox()) && bossHeavy(b.x, 'swan', 2, b.y - 35) === 'parried') { b.bounces = 0; pbStagger(2.0, 'it tips over'); return; }   // its move the shield can't take
         if (--b.bounces > 0) { b.air = true; b.vy = -560; b.tx = Math.max(lo, Math.min(hi, P.x)); } else { bossState('wobble'); }   // rocking about after the slam: the opening
       }
       return;
@@ -284,20 +284,20 @@ BOSS_KINDS.swan = {
         if (b.cd <= 0) {
           const r = Math.random();
           if (Math.abs(dx) < 150 && r < 0.5) { b.x += Math.sign(dx) * Math.min(30, Math.max(0, Math.abs(dx) - 90)); bossState('biteWind'); sfx.hiss(); popup(b.x, b.y - 120, '!', '#ff6b5a', true); }
-          else if (r < 0.75) { bossState('bounce'); }
-          else { bossState('honkWind'); }
+          else if (r < 0.75) { bossState('bounce'); bossBigTell(b.x, b.y - 120); }
+          else { bossState('honkWind'); sfx.inhale(); }   // (a breath in: its wind up was silent)
         }
         break;
       }
       case 'wobble': b.y = b.base + Math.sin(b.t * 18) * 3; if (b.t >= 0.9) { b.y = b.base; bossState('idle'); b.cd = 0.6; } break;
-      case 'bounce': if (b.t >= 0.35) { b.air = true; b.vy = -620; b.tx = Math.max(lo, Math.min(hi, P.x)); b.bounces = b.phase === 2 ? 2 : 1; sfx.hop(); } break;
+      case 'bounce': if (b.t >= 0.55) { b.air = true; b.vy = -620; b.tx = Math.max(lo, Math.min(hi, P.x)); b.bounces = b.phase === 2 ? 2 : 1; sfx.hop(); } break;
       case 'honkWind': if (b.t >= 0.6 / fast) { bossState('honk'); sfx.honk(); shakeT = 0.2; shakeA = 2; for (const v of [-1, 1]) { b.waves.push({ x: b.x + v * 40, y: SURF, v: v * 260 }); b.waves.push({ x: b.x + v * 40, y: 26 * T, v: v * 260 }); } } break;
       case 'honk': if (b.t >= 0.5) { bossState('idle'); b.cd = 1.0; } break;
       case 'biteWind': if (b.t >= 0.55 / fast) { bossState('bite'); sfx.whoosh(); } break;
       case 'bite': {                                                                  // the neck lunging out low in front
         const hb = { l: b.f < 0 ? b.x - 78 : b.x + 20, r: b.f < 0 ? b.x - 20 : b.x + 78, t: b.y - 64, b: b.y - 10 };   // as far as the neck's drawn reaching
-        if (!b.hitP && phillAround() && overlap(hb, me())) {
-          b.hitP = true; const out = foeStrike(b.x, 'swan', { cost: 30 });
+        if (!b.hitP && phillAround() && bossHit(hb)) {
+          b.hitP = true; const out = foeStrike(b.x, 'swan', { cost: 20, y: (hb.t + hb.b) / 2 });
           if (out === 'parried') { pbStagger(2.0, 'its head flops down'); break; }
         }
         if (b.t >= 0.4) { bossState('idle'); b.cd = 0.8 + Math.random() * 0.5; }

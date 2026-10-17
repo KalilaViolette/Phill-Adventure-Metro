@@ -518,6 +518,15 @@ function update(dt) {
     P.jumpBufT = 0;
     if (P.atkBufT > 0 && P.atkCD <= 0 && !P.atk && !guarding) { if (spend('crawl')) startAttack('crawl'); else P.atkBufT = 0; }   // a jab out along the floor
     if (hasHeadroom(STAND_H) && !P.atk) { P.crawl = false; P.h = STAND_H; puff(P.x, P.y, 3, 20); }
+    else if (P.crawl && !P.atk && P.ground && dir === P.facing && bodyHit(P.x + dir, P.y - P.h, P.y)) {
+      // his nose is up against something and there's room to stand a little way along his body (her report, 10/17/2026:
+      // out from under the bed, nose on the nightstand, his feet still under the bed's edge and no way to get up): he
+      // gets up where his body is instead of where his feet are
+      for (let k = 1; k <= CRAWL_FRONT - HW; k++) {
+        const x = P.x + dir * k;
+        if (!boxSolid(x - HW, P.y - STAND_H, x + HW, P.y) && boxSolid(x - HW, P.y, x + HW, P.y + 2)) { P.x = x; P.crawl = false; P.h = STAND_H; P.vx = 0; puff(P.x, P.y, 3, 20); break; }
+      }
+    }
     else if (P.dodgeBufT > 0 && P.rollCD <= 0 && P.ground && can('roll')) {
       const d = dir || P.facing;
       if (!(P.atk && P.atk.t < ATK[P.atk.type].off) && spend('roll')) { P.crawl = false; P.roll = tune.rollTime * (P.tiredDodge ? 0.7 : 1); P.rollTired = P.tiredDodge; P.rollDir = d; P.facing = d; P.rollCD = tune.rollTime + (P.tiredDodge ? 0.5 : 0.25); sfx.roll(); }

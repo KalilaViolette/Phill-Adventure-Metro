@@ -22,7 +22,11 @@ BOSS_KINDS.top = {
     b.waves = b.waves.filter(w => !w.dead);
     if (b.air) {
       b.vy += 900 * dt; b.y += b.vy * dt; b.x = Math.max(lo, Math.min(hi, b.x + b.vx * dt));
-      if (b.y >= b.def.y) { b.y = b.def.y; b.air = false; shakeT = 0.25; shakeA = 3; sfx.slam(); puff(b.x, b.y, 14, 90, '#dcc08a'); for (const v of [-1, 1]) b.waves.push({ x: b.x + v * 30, v: v * 230 * fast }); bossState('spin'); b.cd = 0.8; }
+      if (b.y >= b.def.y) {
+        b.y = b.def.y; b.air = false; shakeT = 0.25; shakeA = 3; sfx.slam(); puff(b.x, b.y, 14, 90, '#dcc08a'); for (const v of [-1, 1]) b.waves.push({ x: b.x + v * 30, v: v * 230 * fast });
+        if (phillAround() && bossHit(this.hurtBox()) && bossHeavy(b.x, 'top', 1) === 'parried') { pbStagger(2.2, 'knocked off balance'); return; }   // landing on him: its move the shield can't take (it didn't hurt at all before, only the waves did)
+        bossState('spin'); b.cd = 0.8;
+      }
       return;
     }
     const spinning = b.state === 'spin' || b.state === 'skate' || b.state === 'storm' || b.state === 'idle';
@@ -34,15 +38,16 @@ BOSS_KINDS.top = {
         if (b.cd <= 0) {
           const r = Math.random();
           if (r < 0.45) { bossState('skateWind'); b.f = Math.sign(dx) || 1; b.bumps = 0; b.charges = 1 + Math.floor(Math.random() * 3); sfx.whirl(); popup(b.x, b.y - 80, '!', '#ff6b5a', true); }   // charges back and forth one to three times before it wobbles, so you can't just wait by the wall for it (his friend's playtest, 10/14/2026)
-          else if (r < 0.75) { b.air = true; b.vy = -540; b.vx = Math.sign(dx) * Math.min(220, Math.abs(dx) * 1.4); sfx.hop(); bossState('hop'); }
+          else if (r < 0.75) { bossState('hopWind'); bossBigTell(b.x, b.y - 80); }
           else { bossState('storm'); sfx.whirl(); }
         }
         break;
       case 'skateWind': if (b.t >= 0.45 / fast) { bossState('skate'); sfx.whoosh(); } break;
+      case 'hopWind': if (b.t >= 0.45 / fast) { b.air = true; b.vy = -540; b.vx = Math.sign(dx) * Math.min(220, Math.abs(dx) * 1.4); sfx.hop(); bossState('hop'); } break;   // a crouch before the hop (it had none)
       case 'skate': {                                                                         // charging across the sandbox
         b.x += b.f * 300 * fast * dt;
-        if (!b.hitP && phillAround() && overlap(this.hurtBox(), me())) {
-          b.hitP = true; const out = foeStrike(b.x, 'top', { cost: 28 });
+        if (!b.hitP && phillAround() && bossHit(this.hurtBox())) {
+          b.hitP = true; const out = foeStrike(b.x, 'top', { cost: 20 });
           if (out === 'parried') { pbStagger(2.2, 'knocked off balance'); break; }
           if (out === 'blocked') P.vx = b.f * 200;
         }
@@ -61,12 +66,12 @@ BOSS_KINDS.top = {
         break;
       case 'stagger': if (b.t >= b.stagT) { bossState('spin'); b.cd = 0.6; } break;
     }
-    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && b.state !== 'skate' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.hurtBox(), me())) hurt(b.x, 'top', 1);
+    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && b.state !== 'skate' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossBumpOk() && bossHit(this.hurtBox())) hurt(b.x, 'top', 1);
   },
   hits(box, a) {
     const b = boss;
     if (b.state === 'stagger' || b.state === 'falling') { pbHit(box, a, this.hurtBox()); return; }
-    if (!overlap(box, this.hurtBox())) return;
+    if (!swingOn(box, this.hurtBox())) return;
     a.hit.add('boss'); a.stopLunge = true; spark(b.x - P.facing * 20, P.y - 20); sfx.tink(); P.recoilT = 0.1; P.recoilV = -P.facing * 220;   // spinning: glances off
     if (a.type === 'down') pogo();
     if (!b.told) { b.told = 1; popup(P.x, P.y - 54, 'it glances off while it spins', '#cfd6e6'); }
@@ -76,7 +81,7 @@ BOSS_KINDS.top = {
     const b = boss; pbWalls(); if (!b) return;
     if (b.state === 'gone') { spr('top_fall', b.x, b.def.y, false); return; }
     const fr = b.down ? 'top_fall' : b.state === 'stagger' || b.state === 'falling' ? 'top_tilt' : b.air ? 'top_hop' : 'top_spin_' + (Math.floor(b.t * (b.state === 'skate' ? 24 : 14)) % 3 + 1);
-    const shake = b.state === 'skateWind' ? Math.round(Math.sin(b.t * 50)) : b.state === 'stagger' ? Math.round(Math.sin(b.t * 9) * 3) : 0;
+    const shake = b.state === 'skateWind' || b.state === 'hopWind' ? Math.round(Math.sin(b.t * 50)) : b.state === 'stagger' ? Math.round(Math.sin(b.t * 9) * 3) : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ellipse(b.x, b.def.y, 22, 2);
     pbDraw(fr, b.x, b.y, b.f > 0, shake);
     for (const w of b.waves) { ctx.fillStyle = '#c4a674'; ctx.fillRect(Math.round(w.x) - 4, b.def.y - 10, 8, 10); ctx.fillStyle = '#ecd6a4'; ctx.fillRect(Math.round(w.x) - 2, b.def.y - 14, 4, 5); }
@@ -103,7 +108,7 @@ BOSS_KINDS.marionette = {
         if (b.cd <= 0) {
           const r = Math.random();
           if (r < 0.4) { bossState('swingWind'); b.from = b.x; b.to = Math.max(lo, Math.min(hi, b.x + Math.sign(dx || 1) * 280)); sfx.creak(); popup(b.x, b.y - 120, '!', '#ff6b5a', true); }
-          else if (r < 0.75) { bossState('rise'); sfx.creak(); }
+          else if (r < 0.75) { bossState('rise'); sfx.creak(); bossBigTell(b.x, b.y - 120); }
           else { bossState('flail'); sfx.clunk(); }
         }
         break;
@@ -112,8 +117,8 @@ BOSS_KINDS.marionette = {
         const k = Math.min(1, b.t / (0.75 / fast));
         b.x = b.from + (b.to - b.from) * k; b.y = b.base - 70 + Math.sin(Math.PI * k) * 64;
         const hb = { l: b.x - 26, r: b.x + 26, t: b.y - 40, b: b.y };
-        if (!b.hitP && phillAround() && overlap(hb, me())) {
-          b.hitP = true; const out = foeStrike(b.x, 'marionette', { cost: 28 });
+        if (!b.hitP && phillAround() && bossHit(hb)) {
+          b.hitP = true; const out = foeStrike(b.x, 'marionette', { cost: 20 });
           if (out === 'parried') { pbStagger(2.2, 'tangled in its own strings'); b.y = b.base; break; }
         }
         if (k >= 1) { bossState('slack'); b.y = b.base; }
@@ -123,25 +128,25 @@ BOSS_KINDS.marionette = {
       case 'stomp':
         b.y = Math.min(b.base, b.y + 700 * dt);
         if (b.y >= b.base) {
-          if (!b.landed) { b.landed = true; shakeT = 0.25; shakeA = 3; sfx.slam(); puff(b.x, b.base, 12, 80); if (phillAround() && Math.abs(P.x - b.x) < 30 && P.y > b.base - 40) hurt(b.x, 'marionette', 1); }
+          if (!b.landed) { b.landed = true; shakeT = 0.25; shakeA = 3; sfx.slam(); puff(b.x, b.base, 12, 80); if (phillAround() && Math.abs(P.x - b.x) < 30 && P.y > b.base - 40 && bossHeavy(b.x, 'marionette', 1) === 'parried') { b.landed = false; b.y = b.base; pbStagger(2.2, 'tangled in its own strings'); break; } }   // its move the shield can't take
           if (b.t >= 0.4) { b.landed = false; bossState('slack'); }
         }
         break;
       case 'slack': b.y = b.base; if (b.t >= 1.3) { bossState('idle'); b.cd = 0.6 + Math.random() * 0.5; } break;     // loose on the ground: hit it
       case 'flail': {
         const hb = { l: b.x - 44, r: b.x + 44, t: b.y - 90, b: b.y - 40 };
-        if (b.t > 0.3 && b.t < 1.0 && !b.hitP && phillAround() && overlap(hb, me())) { b.hitP = true; foeStrike(b.x, 'marionette', { cost: 20 }); }
+        if (b.t > 0.3 && b.t < 1.0 && !b.hitP && phillAround() && bossHit(hb)) { b.hitP = true; foeStrike(b.x, 'marionette', { cost: 20 }); }
         if (b.t >= 1.2) { bossState('idle'); b.cd = 0.8; }
         break;
       }
       case 'stagger': b.y = b.base; if (b.t >= b.stagT) { bossState('idle'); b.cd = 0.5; } break;
     }
-    if (['idle', 'rise', 'swingWind'].includes(b.state) && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap({ l: b.x - 12, r: b.x + 12, t: b.y - 90, b: b.y - 6 }, me())) hurt(b.x, 'marionette', 1);
+    if (['idle', 'rise', 'swingWind'].includes(b.state) && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossBumpOk() && bossHit({ l: b.x - 12, r: b.x + 12, t: b.y - 90, b: b.y - 6 })) hurt(b.x, 'marionette', 1);
   },
   hits(box, a) {
     const b = boss;
     if (b.state === 'slack' || b.state === 'stagger' || b.state === 'falling') { pbHit(box, a, this.hurtBox()); return; }
-    if (!overlap(box, this.hurtBox())) return;
+    if (!swingOn(box, this.hurtBox())) return;
     pbHit(box, a, this.hurtBox()); b.hp += 0.5 * (PB_DMG[a.type] || 1) * swordBonus() * (a.scale || 1);   // up on its strings it's harder to hurt: half
   },
   squeaked(x, y, r) { const b = boss; if (Math.abs(b.x - x) > r + 30 || b.state === 'stagger') return false; pbStagger(0.8); b.y = b.base; return true; },
@@ -179,7 +184,7 @@ BOSS_KINDS.clown = {
     const outTo = v => { b.out += (v - b.out) * Math.min(1, dt * 10); };
     if (b.air) {
       b.vy += 900 * dt; b.y += b.vy * dt; b.x = Math.max(lo, Math.min(hi, b.x + b.vx * dt)); outTo(0.3);
-      if (b.y >= b.def.y) { b.y = b.def.y; b.air = false; shakeT = 0.3; shakeA = 4; sfx.slam(); puff(b.x, b.y, 16, 90); if (phillAround() && overlap(this.boxBox(), me())) hurt(b.x, 'clown', 2); bossState('idle'); b.cd = 0.7; }
+      if (b.y >= b.def.y) { b.y = b.def.y; b.air = false; shakeT = 0.3; shakeA = 4; sfx.slam(); puff(b.x, b.y, 16, 90); if (phillAround() && bossHit(this.boxBox()) && bossHeavy(b.x, 'clown', 2) === 'parried') { pbStagger(2.2, 'it tips over'); return; } bossState('idle'); b.cd = 0.7; }   // landing on him: its move the shield can't take
       return;
     }
     switch (b.state) {
@@ -191,15 +196,16 @@ BOSS_KINDS.clown = {
           const r = Math.random();
           if (Math.abs(dx) < 160 && r < 0.45) { bossState('lungeWind'); sfx.ticking(); popup(b.x, b.y - 150, '!', '#ff6b5a', true); }
           else if (r < 0.7) { bossState('throw'); b.shots = b.phase === 2 ? 3 : 2; }
-          else { b.air = true; b.vy = -560; b.vx = Math.sign(dx) * Math.min(260, Math.abs(dx) * 1.3); sfx.boing(); bossState('hop'); }
+          else { bossState('hopWind'); bossBigTell(b.x, b.y - 150); }
         }
         break;
       case 'lungeWind': outTo(0.2); if (b.t >= 0.5 / fast) { bossState('lunge'); sfx.boing(); } break;
+      case 'hopWind': outTo(0.2); if (b.t >= 0.45 / fast) { b.air = true; b.vy = -560; b.vx = Math.sign(dx) * Math.min(260, Math.abs(dx) * 1.3); sfx.boing(); bossState('hop'); } break;   // a crouch before the hop (it had none)
       case 'lunge': {                                                                         // the clown springing out at him
         outTo(1);
         const hb = this.headBox();
-        if (!b.hitP && phillAround() && overlap(hb, me())) {
-          b.hitP = true; const out = foeStrike(b.x, 'clown', { cost: 30 });
+        if (!b.hitP && phillAround() && bossHit(hb)) {
+          b.hitP = true; const out = foeStrike(b.x, 'clown', { cost: 20 });
           if (out === 'parried') { pbStagger(2.2, 'its spring goes slack'); break; }
         }
         if (b.t >= 0.5) { bossState('idle'); b.cd = 0.6 + Math.random() * 0.5; }
@@ -220,23 +226,23 @@ BOSS_KINDS.clown = {
       case 'stagger': outTo(0.35); if (b.t >= b.stagT) { bossState('idle'); b.cd = 0.5; } break;
       case 'falling': outTo(0.4); break;
     }
-    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && overlap(this.boxBox(), me())) hurt(b.x, 'clown', 1);
+    if (b.state !== 'stagger' && b.state !== 'falling' && b.state !== 'dormant' && phillAround() && P.inv <= 0 && !dodgeSafe() && !P.story && bossBumpOk() && bossHit(this.boxBox())) hurt(b.x, 'clown', 1);
   },
   hits(box, a) {
     const b = boss;
     if (b.state === 'stagger') {                                                              // slumped on its spring: anywhere on it counts
       const h = this.headBox(), bb = this.boxBox(), all = { l: Math.min(h.l, bb.l), r: Math.max(h.r, bb.r), t: h.t, b: bb.b };
-      if (overlap(box, all)) { pbHit(box, a, h); return; }
+      if (swingOn(box, all)) { pbHit(box, a, h); return; }
     }
-    if (b.out > 0.45 && overlap(box, this.headBox())) { pbHit(box, a, this.headBox()); return; }
-    if (overlap(box, this.boxBox())) { a.hit.add('boss'); a.stopLunge = true; spark(P.x + P.facing * 16, P.y - 20); sfx.tok(); P.recoilT = 0.1; P.recoilV = -P.facing * 200; if (a.type === 'down') pogo(); if (!b.told) { b.told = 1; popup(P.x, P.y - 54, 'knock knock. hit the clown, not the box', '#cfd6e6'); } }
+    if (b.out > 0.45 && swingOn(box, this.headBox())) { pbHit(box, a, this.headBox()); return; }
+    if (swingOn(box, this.boxBox())) { a.hit.add('boss'); a.stopLunge = true; spark(P.x + P.facing * 16, P.y - 20); sfx.tok(); P.recoilT = 0.1; P.recoilV = -P.facing * 200; if (a.type === 'down') pogo(); if (!b.told) { b.told = 1; popup(P.x, P.y - 54, 'knock knock. hit the clown, not the box', '#cfd6e6'); } }
   },
   squeaked(x, y, r) { const b = boss; if (Math.abs(b.x - x) > r + 40 || b.state === 'stagger' || b.air) return false; pbStagger(1.0, 'it covers its ears'); return true; },
   draw() {
     const b = boss; pbWalls(); if (!b) return;
     if (b.state === 'gone') { spr('clown_down', b.x, b.def.y, b.f > 0); return; }
-    const fr = b.down ? 'clown_down' : b.state === 'dormant' ? 'clown_box' : b.air ? 'clown_hop' : b.state === 'lunge' ? 'clown_lunge' : b.state === 'throw' ? 'clown_throw' : b.state === 'stagger' || b.state === 'falling' ? 'clown_hurt' : b.state === 'lungeWind' ? 'clown_hop' : 'clown_pop';
-    const shake = b.state === 'lungeWind' ? Math.round(Math.sin(b.t * 50)) : 0;
+    const fr = b.down ? 'clown_down' : b.state === 'dormant' ? 'clown_box' : b.air ? 'clown_hop' : b.state === 'lunge' ? 'clown_lunge' : b.state === 'throw' ? 'clown_throw' : b.state === 'stagger' || b.state === 'falling' ? 'clown_hurt' : b.state === 'lungeWind' || b.state === 'hopWind' ? 'clown_hop' : 'clown_pop';
+    const shake = b.state === 'lungeWind' || b.state === 'hopWind' ? Math.round(Math.sin(b.t * 50)) : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ellipse(b.x, b.def.y, 32, 2);
     pbDraw(fr, b.x, b.y, b.f > 0, shake);
   },

@@ -6,7 +6,7 @@ const T = 16, STEP = 1 / 120;
 const C = document.getElementById('c'), ctx = C.getContext('2d');
 let S = 1, offX = 0, offY = 0;
 function resize() {
-  const box = document.getElementById('stage').getBoundingClientRect();
+  const st = document.getElementById('stage'), box = { width: st.clientWidth, height: st.clientHeight };   // (its own size, not how it sits on the screen: full screen on a phone held upright turns it on its side, 10/17/2026)
   const dpr = window.devicePixelRatio || 1;
   C.width = Math.max(1, Math.round(box.width * dpr)); C.height = Math.max(1, Math.round(box.height * dpr));
   S = Math.max(1, Math.round(C.height / 360));

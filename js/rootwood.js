@@ -31,7 +31,7 @@ Object.assign(FOE, {
   // a candy wrapper: flutters about on its twisted ends, lines up over him, and swoops down. Its newer tricks (10/16/2026):
   // a dive it pulls out of to make him flinch before the real one, a spin that flings scraps of foil, and (a region out)
   // a dive that wraps itself round him and slows him till he shakes it off
-  wrapper: { hp: 2, hw: 10, h: 14, acorns: [1, 2], free: true,
+  wrapper: { hp: 3, hw: 10, h: 14, acorns: [1, 2], free: true,
     setup(f) { let k = 3 * T; while (k > 0 && boxSolid(f.x - 10, f.y - k - 20, f.x + 10, f.y - k - 4)) k -= 4; f.y -= k; f.hx = f.x; f.hy = f.y; },   // up off the ground, but not into the ceiling (her report: one was stuck in it)
     box: f => (f.state === 'wrap' ? { l: -999, r: -998, t: -999, b: -998 } : { l: f.x - 10, r: f.x + 10, t: f.y - 18, b: f.y - 6 }),
     harmless: f => f.state === 'dive' || f.state === 'feint' || f.state === 'wrap',
@@ -48,7 +48,7 @@ Object.assign(FOE, {
           f.f = Math.sign(dx) || f.f; setFoeState(f, m === 'feintaim' ? 'aim' : m); f.feint = m === 'feintaim'; m === 'spin' ? sfx.whirl() : sfx.paper();
         }
       } else if (f.state === 'aim') {
-        if (f.t >= (f.again ? 0.18 : 0.4)) {
+        if (f.t >= (f.again ? 0.28 : 0.4)) {                                                 // (after a feint 0.28 s, it was 0.18: the dive's a heavy now and needs time to read, 10/17/2026)
           f.again = false;
           const d = Math.hypot(dx, P.y - 16 - f.y) || 1; f.vx = dx / d * 250; f.vy = (P.y - 16 - f.y) / d * 250; sfx.whoosh();
           setFoeState(f, f.feint ? 'feint' : 'dive'); f.feint = false;
@@ -169,7 +169,7 @@ Object.assign(FOE, {
   // a juice box: squeezes itself and squirts a stream of Grime out of its straw (parry the drops right back). Newer
   // (10/16/2026): an arc of it lobbed up over a wall or a ledge onto him, a slurp that sucks him in close for a burst
   // in his face, and (a region out) a hop right on top of him
-  juice: { hp: 3, hw: 8, h: 26, acorns: [2, 3],
+  juice: { hp: 4, hw: 8, h: 26, acorns: [2, 3],
     harmless: f => f.state === 'leap',
     update(f, dt) {
       baseState(f, dt);
@@ -207,7 +207,7 @@ Object.assign(FOE, {
         if (f.t >= 0.9) { setFoeState(f, 'burst'); sfx.splort(); sfx.spit(); }
       } else if (f.state === 'burst') {                                                   // ...and lets it all out at once, right in his face
         if (Math.random() < dt * 50) part(f.x + f.f * (10 + Math.random() * 30), f.y - 34 + Math.random() * 12, f.f * 120, (Math.random() - 0.5) * 60, 0.3, Math.random() < 0.5 ? '#2c1c3c' : '#4a3462', 2, 100);
-        strike(f, { l: Math.min(f.x + f.f * 6, f.x + f.f * 42), r: Math.max(f.x + f.f * 6, f.x + f.f * 42), t: f.y - 44, b: f.y - 16 }, 28);
+        strike(f, { l: Math.min(f.x + f.f * 6, f.x + f.f * 42), r: Math.max(f.x + f.f * 6, f.x + f.f * 42), t: f.y - 44, b: f.y - 16, area: true }, 28);   // (area: the spray's the bits flying out, not part of its picture)
         if (f.t >= 0.4) { setFoeState(f, 'walk'); f.cd = 1.8 + Math.random() * 0.6; }
       } else if (f.state === 'leapwind') {                                                // crouches down on its feet...
         if (f.t >= 0.35) { setFoeState(f, 'leap'); f.air = true; f.vy = -330; f.hopVX = Math.max(-200, Math.min(200, (P.x - f.x) / (2 * 330 / 700))); sfx.jump(); f.after = 1.4; }
@@ -219,20 +219,22 @@ Object.assign(FOE, {
   // goes over its head first, so jumping over it doesn't help. Newer (10/16/2026): a low sweep of the handle along the
   // ground (jump it), a long lunge with the handle out like a lance, and (a region out) a vault right over him on its
   // handle to stab him in the back
-  fork: { hp: 3, hw: 9, h: 28, acorns: [2, 3], walker: true,
+  fork: { hp: 5, hw: 9, h: 28, acorns: [2, 3], walker: true,
     harmless: f => f.state === 'vault' || f.state === 'lunge',
     update(f, dt) {
       baseState(f, dt);
       if (f.yoff < 0 && f.state !== 'vault') hopArc(f, dt);
       const dx = P.x - f.x, adx = Math.abs(dx);
       if (f.state === 'walk') {
-        if (!chaseWalk(f, dt, 40, 40)) {
+        if (!chaseWalk(f, dt, 40, 24)) {                                               // (right up to him: its tines and handle only reach about 25 px, now its hits are where it's drawn, 10/16/2026)
           f.x += f.f * 32 * dt;
           if (f.x <= f.range[0]) { f.x = f.range[0]; f.f = 1; } else if (f.x >= f.range[1]) { f.x = f.range[1]; f.f = -1; }
         }
         if (f.cd <= 0 && near(f, 9 * T, 110)) {
           const level = Math.abs(P.y - f.y) < 30;
-          const m = choose([[adx < 70 ? 2 : 0, 'wind'], [hasMove(f, 2) && adx < 64 && level ? 1.4 : 0, 'sweepwind'], [hasMove(f, 3) && adx > 60 && adx < 150 && level ? 1.4 : 0, 'lungewind'],
+          // each one only from where its drawing really reaches him (its hits are where it's drawn now, 10/16/2026): the stab
+          // reaches 23 px, the sweep 28, the lunge about 78 with its push forward (his body's 8 either side of him)
+          const m = choose([[adx < 30 ? 2 : 0, 'wind'], [hasMove(f, 2) && adx < 34 && level ? 1.4 : 0, 'sweepwind'], [hasMove(f, 3) && adx > 40 && adx < 80 && level ? 1.4 : 0, 'lungewind'],
             [hasMove(f, 4) && adx > 20 && adx < 90 && level ? 1 : 0, 'vaultwind']]);   // the stab from where it reaches (was 120)
           if (m) { f.f = Math.sign(dx) || f.f; setFoeState(f, m); sfx.windup(); }
         }
@@ -252,8 +254,8 @@ Object.assign(FOE, {
         f.x = Math.max(f.range[0], Math.min(f.range[1], f.x + f.f * 260 * (1 - f.t / 0.4) * dt));
         if (f.t < 0.32) strike(f, { l: Math.min(f.x, f.x + f.f * 32), r: Math.max(f.x, f.x + f.f * 32), t: f.y - 22, b: f.y - 8 }, 20);
         if (f.t >= 0.55) { setFoeState(f, 'walk'); f.cd = 1.4 + Math.random() * 0.6; }
-      } else if (f.state === 'vaultwind') { if (f.t >= 0.35) { setFoeState(f, 'vault'); f.vy = -340; f.hopVX = hopTo(f, P.x + f.f * 34, -340); f.yoff = -0.01; sfx.boing(); } }
-      else if (f.state === 'vault') {                                                     // up and over on its handle...
+      } else if (f.state === 'vaultwind') { if (f.t >= 0.35) { setFoeState(f, 'vault'); f.vy = -340; f.hopVX = hopTo(f, P.x + f.f * 18, -340); f.yoff = -0.01; sfx.boing(); } }
+      else if (f.state === 'vault') {                                                     // up and over on its handle... (landing just behind him, close enough for the stab to reach: it was 34 px, past its tines)
         if (hopArc(f, dt)) { f.f = -f.f; setFoeState(f, 'backwind'); puff(f.x, f.y, 4, 30); if (heard(f)) sfx.land(); }
       } else if (f.state === 'backwind') { f.f = Math.sign(P.x - f.x) || f.f; if (f.t >= 0.2) { setFoeState(f, 'stab'); sfx.whoosh(); } }   // ...and round for a stab in his back
     },
@@ -263,7 +265,7 @@ Object.assign(FOE, {
   // from above, though). Rolling into a wall or off the end of its ground tips it over flat for a moment: hit it then.
   // Only in the Old Oak, so it has all four (10/16/2026): the roll, a hop onto him, a loop flung out on a strand that
   // snags him and reels him in (mash free), and a loop thrown like a frisbee that comes back
-  rings: { hp: 3, hw: 13, h: 28, acorns: [2, 3],
+  rings: { hp: 5, hw: 13, h: 28, acorns: [2, 3],
     deflectText: 'it just rolls on. wait till it tips over',
     deflect: (f, a) => (f.state === 'walk' || f.state === 'wake') && a.type !== 'down',
     noHurt: true, harmless: f => ['flat', 'hop', 'snag', 'reel', 'snagwind', 'throwwind', 'wait'].includes(f.state),

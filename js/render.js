@@ -165,7 +165,13 @@ function render(alpha) {
       const b = foeBox(f); if (b.l < -900) continue;
       const safe = f.state === 'stagger' || (FOE[f.kind].harmless && FOE[f.kind].harmless(f));
       ctx.strokeStyle = safe ? 'rgba(200,200,210,0.55)' : '#ffa040'; ctx.strokeRect(b.l, b.t, b.r - b.l, b.b - b.t);
-      if (f.atkT > 0 && f.atkBox) { const a = f.atkBox; ctx.strokeStyle = '#ff3b3b'; ctx.strokeRect(a.l, a.t, a.r - a.l, a.b - a.t); }
+      if (f.atkT > 0 && f.atkBox) {
+        const a = f.atkBox; ctx.strokeStyle = '#ff3b3b'; ctx.strokeRect(a.l, a.t, a.r - a.l, a.b - a.t);
+        if (ART_HITS.has(f.kind) && !a.area) {                                  // where it can really hit: the drawn part of it inside its box, filled in
+          const rec = foePose(f); ctx.fillStyle = 'rgba(255,59,59,0.55)';
+          for (let y = Math.floor(a.t); y < a.b; y++) for (let x = Math.floor(a.l); x < a.r; x++) if (artIn(rec, { l: x, r: x + 1, t: y, b: y + 1 })) ctx.fillRect(x, y, 1, 1);
+        }
+      }
     }
     ctx.strokeStyle = '#ff7ad0'; for (const sh of shots) ctx.strokeRect(sh.x - 4, sh.y - 4, 8, 8);
     if (P.atk) {
@@ -230,7 +236,10 @@ function groundShadow(x, y, maxDrop, rx) {
     }
   }
 }
+let bodyAt = null;                 // where and how his body was last drawn (the charge glow goes right over it)
+function body(im, fr, x, y) { ctx.drawImage(im, fr[0], fr[1], 64, 64, x, y, 64, 64); bodyAt = { t: ctx.getTransform(), x, y }; }
 function drawPhill(px, py, q) {
+  bodyAt = null;
   const name = frameName();
   const { im, meta } = phillSheet();
   if (!im || !name) return;
@@ -250,7 +259,7 @@ function drawPhill(px, py, q) {
   if (P.chute && name.startsWith('slide')) {                         // going down the slide: tipped back a little with the slope
     const top = meta.frames[name.replace(/_[RL]$/, '_top')];
     ctx.save(); ctx.translate(q(px), q(py)); ctx.rotate((P.chute.ang || 0) * 0.35);
-    ctx.drawImage(im, fr[0], fr[1], 64, 64, -31.5, -meta.baseline, 64, 64);
+    body(im, fr, -31.5, -meta.baseline);
     if (top) ctx.drawImage(im, top[0], top[1], 64, 64, -31.5, -meta.baseline, 64, 64);
     ctx.restore(); ctx.globalAlpha = 1;
     return;
@@ -258,24 +267,24 @@ function drawPhill(px, py, q) {
   if (name.startsWith('roll')) {
     const spin = Math.floor((tune.rollTime - P.roll) / tune.rollTime * 4) % 4;
     ctx.save(); ctx.translate(q(px), q(py - ROLL_H / 2 - 4)); ctx.rotate(spin * P.rollDir * Math.PI / 2);
-    ctx.drawImage(im, fr[0], fr[1], 64, 64, -32, -32, 64, 64); ctx.restore();
+    body(im, fr, -32, -32); ctx.restore();
   } else if (name.startsWith('hang')) {
     const [hx, hy] = meta.hang[name], h = P.hang || P.cling;   // his hand sits right on the corner of the ledge (or flat on the bark)
-    ctx.drawImage(im, fr[0], fr[1], 64, 64, Math.round(h.cx - h.dir - hx), Math.round(h.cy - hy), 64, 64);
+    body(im, fr, Math.round(h.cx - h.dir - hx), Math.round(h.cy - hy));
   } else if (name.startsWith('airdodge')) {
     if (cape) ctx.drawImage(cape, fr[0], fr[1], 64, 64, q(px - 32), q(py - P.h / 2 - 32), 64, 64);
-    ctx.drawImage(im, fr[0], fr[1], 64, 64, q(px - 32), q(py - P.h / 2 - 32), 64, 64);
+    body(im, fr, q(px - 32), q(py - P.h / 2 - 32));
   } else if (P.swim && Math.abs(P.swimRot || 0) > 0.03) {             // swimming up, down or on a slant, or swinging or holding the lid that way: turned to it, head first
     const ax = P.facing > 0 ? 30.5 : 33.5;
     ctx.save(); ctx.translate(q(px), q(py - ROLL_H / 2)); ctx.rotate(P.swimRot);
-    ctx.drawImage(im, fr[0], fr[1], 64, 64, -ax, -(meta.baseline - ROLL_H / 2), 64, 64); ctx.restore();
+    body(im, fr, -ax, -(meta.baseline - ROLL_H / 2)); ctx.restore();
   } else {
     const top = meta.frames[name.replace(/_[RL]$/, '_top')];           // sitting facing us: his feet and arms go on top
     let ax = name === 'turn' || top ? 31.5 : name.startsWith('ko') ? 32 : (P.facing > 0 ? 30.5 : 33.5);
     if (name.startsWith('crawlatk')) ax -= P.facing * 14;            // the jab's drawn shoved back in its cell so the blade fits (CRAWL_ATK_SHIFT in phill_sprites.py)
     const fx = q(px - ax), fy = q(py - meta.baseline);
     if (cape) ctx.drawImage(cape, fr[0], fr[1], 64, 64, fx, fy, 64, 64);
-    ctx.drawImage(im, fr[0], fr[1], 64, 64, fx, fy, 64, 64);
+    body(im, fr, fx, fy);
     if (top) {
       if (P.paper) drawPaper(im, meta, name, fx, fy);
       ctx.drawImage(im, top[0], top[1], 64, 64, fx, fy, 64, 64);
@@ -287,7 +296,13 @@ function drawPhill(px, py, q) {
   if (P.charge > 0 && !name.startsWith('hang')) {     // glowing as the energy builds
     const gs = getGhost(), full = P.charge >= tune.chargeTime;
     const k = full ? 0.35 + 0.25 * Math.sin(P.charge * 30) : 0.08 + 0.25 * (P.charge / tune.chargeTime) + 0.06 * Math.sin(P.charge * 22);
-    if (gs) { ctx.globalAlpha = Math.max(0, k); ctx.drawImage(gs, fr[0], fr[1], 64, 64, q(px - (P.facing > 0 ? 30.5 : 33.5) + (full ? (Math.random() < 0.5 ? -0.5 : 0.5) : 0)), q(py - meta.baseline), 64, 64); ctx.globalAlpha = 1; }
+    // drawn exactly where and how his body just was (her report, 10/16/2026: it was always drawn standing upright at the
+    // plain walking spot, so swimming on a slant, turning or jabbing low it sat off him at the wrong angle)
+    if (gs && bodyAt) {
+      const sh = full ? (Math.random() < 0.5 ? -0.5 : 0.5) : 0;
+      ctx.save(); ctx.setTransform(bodyAt.t); ctx.globalAlpha = Math.max(0, k);
+      ctx.drawImage(gs, fr[0], fr[1], 64, 64, bodyAt.x + sh, bodyAt.y, 64, 64); ctx.restore(); ctx.globalAlpha = 1;
+    }
   }
   if (P.gbreak > 0) for (let i = 0; i < 3; i++) { const a = P.gbreak * 9 + i * 2.1; ctx.fillStyle = '#ffd36b'; ctx.fillRect(q(px + Math.cos(a) * 9) - 1, q(py - 42 + Math.sin(a) * 2.5), 2, 2); }   // (a bit lower than they were: the bars are over his head now)
   if (P.splat > SPLAT[0] && P.splat < SPLAT[2]) for (let i = 0; i < 3; i++) { const a = P.splat * 8 + i * 2.1; ctx.fillStyle = '#ffd36b'; ctx.fillRect(q(px + P.facing * 12 + Math.cos(a) * 8) - 1, q(py - 22 + Math.sin(a) * 2.5), 2, 2); }
@@ -606,8 +621,47 @@ function drawAmbient(camX, camY, glowPass) {
     }
   }
 }
+// the underground rooms' little moving things (10/17/2026, the underground look): glow worm beads twinkling, and
+// water dripping from a crack in the roof with a ripple where it lands, and the plants' glowing bulbs and beads. The room file says where (glowworms, drips, frontglow)
+const dripState = [];
+let glowT = performance.now();
+function drawUnderground(camX, camY) {
+  const now = performance.now() / 1000, dt = Math.min(0.05, (performance.now() - glowT) / 1000); glowT = performance.now();
+  for (const [x, y] of room.def.glowworms || []) {
+    const sx = Math.round(x - camX), sy = Math.round(y - camY);
+    if (sx < -4 || sx > VW + 4 || sy < -4 || sy > VH + 4) continue;
+    const k = 0.55 + 0.45 * Math.sin(now * 1.3 + x * 0.37 + y * 0.11);
+    ctx.fillStyle = `rgba(150,235,255,${0.07 * k})`; ctx.fillRect(sx - 2, sy - 2, 5, 5);
+    ctx.fillStyle = `rgba(150,235,255,${0.2 * k})`; ctx.fillRect(sx - 1, sy - 1, 3, 3);
+    ctx.fillStyle = `rgba(210,250,255,${0.6 + 0.4 * k})`; ctx.fillRect(sx, sy, 1, 1);
+  }
+  for (const [x, y, f, s, c] of room.def.frontglow || []) {                       // the glowing bits on the underground's plants (f: which layer they're on)
+    const sx = Math.round(x - Math.round(camX * f)), sy = Math.round(y - Math.round(camY * f));
+    if (sx < -8 || sx > VW + 8 || sy < -8 || sy > VH + 8) continue;
+    const k = 0.6 + 0.4 * Math.sin(now * 0.9 + x * 0.21 + y * 0.13), rr = Math.max(1, Math.round(s));
+    const rgb = c ? [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)].join(',') : '160,240,220';
+    for (const [w, a] of [[rr + 3, 0.05], [rr + 1, 0.12], [rr - 1, 0.45]]) {      // a soft round glow, pixel by pixel rings
+      if (w < 0) continue; ctx.fillStyle = `rgba(${rgb},${a * k})`;
+      ctx.fillRect(sx - w, sy - Math.round(w * 0.5), w * 2 + 1, Math.round(w * 0.5) * 2 + 1); ctx.fillRect(sx - Math.round(w * 0.5), sy - w, Math.round(w * 0.5) * 2 + 1, w * 2 + 1);
+    }
+    ctx.fillStyle = `rgba(235,255,250,${0.5 + 0.5 * k})`; ctx.fillRect(sx, sy, 1, 1);
+  }
+  (room.def.drips || []).forEach(([x, top, bottom, every], i) => {
+    const d = dripState[i] = dripState[i] && dripState[i].room === room.id ? dripState[i] : { room: room.id, t: Math.random() * every, y: null, ring: 0 };
+    if (d.y === null) { d.t -= dt; if (d.t <= 0) { d.y = top + 2; d.v = 0; } }
+    else { d.v += 600 * dt; d.y += d.v * dt; if (d.y >= bottom) { d.y = null; d.t = every * (0.7 + Math.random() * 0.6); d.ring = 0.45; } }
+    const sx = Math.round(x - camX);
+    if (sx < -20 || sx > VW + 20) return;
+    if (d.y !== null) { ctx.fillStyle = 'rgba(200,232,240,0.75)'; ctx.fillRect(sx, Math.round(d.y - camY) - 1, 1, 2); }
+    if (d.ring > 0) {
+      d.ring -= dt; const w = Math.round((0.45 - d.ring) * 26), a = d.ring / 0.45 * 0.6;
+      ctx.fillStyle = `rgba(200,232,240,${a})`; ctx.fillRect(sx - w, Math.round(bottom - camY), 2, 1); ctx.fillRect(sx + w - 1, Math.round(bottom - camY), 2, 1);
+    }
+  });
+}
 // things that glow are drawn after the room gets dark, so they shine through it
 function drawGlow(camX, camY) {
+  if (room.def.glowworms || room.def.drips || room.def.frontglow) drawUnderground(camX, camY);
   for (const m of motes) {
     if (m.k === 'spore') { const a = 0.35 + 0.35 * Math.sin(m.ph * 2.3); ctx.fillStyle = `rgba(${m.c},${a})`; ctx.fillRect(Math.round(m.x), Math.round(m.y), 1, 1); continue; }
     if (m.k === 'ff') {                                // a firefly: drifts slowly, glows on and off
