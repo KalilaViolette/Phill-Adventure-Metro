@@ -58,6 +58,19 @@ document.getElementById('muteBtn').addEventListener('click', e => { audio(); mut
 const musicBtn = document.getElementById('musicBtn');
 musicBtn.textContent = music.on ? 'Music on' : 'Music off';
 musicBtn.addEventListener('click', () => { music.toggle(); musicBtn.textContent = music.on ? 'Music on' : 'Music off'; });
+// the music and effects volumes (10/17/2026), the same ones as the title menu's Options
+(() => {
+  const row = document.querySelector('#gSound .row');
+  for (const [k, name] of [['music', 'Music'], ['sfx', 'Effects']]) {
+    const l = document.createElement('label'); l.className = 'vol';
+    l.innerHTML = `${name} <input type="range" id="vol-${k}" min="0" max="10" step="1" aria-label="${name} volume">`;
+    row.appendChild(l);
+    const r = l.querySelector('input'); r.value = Math.round(VOL[k] * 10);
+    r.addEventListener('input', () => { setVolume(k, r.value / 10); if (k === 'sfx' && sfx.tick) sfx.tick(); });
+    r.addEventListener('change', () => r.blur());
+  }
+})();
+function syncVolumes() { for (const k of ['music', 'sfx']) { const r = document.getElementById('vol-' + k); if (r) r.value = Math.round(VOL[k] * 10); } }
 // asks twice so it can't happen by accident: the first click turns the button into "Click again to start over"
 let restartArmed = 0;
 document.getElementById('restartBtn').addEventListener('click', e => {

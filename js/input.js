@@ -25,7 +25,7 @@ function useDevice(d) {
 }
 let started = false, paused = false, showBoxes = false, showDebug = false;
 window.addEventListener('keydown', e => {
-  if (e.code === 'Tab') { e.preventDefault(); if (started) toggleTune(); return; }
+  if (e.code === 'Tab') { if (!started && window.titleMenu && titleMenu.open) return; e.preventDefault(); if (started) toggleTune(); return; }   // (on the title menu Tab moves through it)
   if (e.code === 'KeyH' && started) { showBoxes = !showBoxes; return; }
   if (e.code === 'F3') { e.preventDefault(); showDebug = !showDebug; return; }   // G is the spin now (his friend's playtest, 10/14/2026), so what's loaded is F3 or its button
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && !tuneOpen()) e.preventDefault();

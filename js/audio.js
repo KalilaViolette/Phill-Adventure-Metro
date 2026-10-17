@@ -1,6 +1,20 @@
 'use strict';
 // ---------- sound (tiny synth, starts after the first click) ----------
 let actx = null, muted = false;
+// the volumes, music and effects apart (the title menu's Options, 10/17/2026). 0 to 1, kept between visits
+const VOL = { music: 1, sfx: 1 };
+try { for (const k of ['music', 'sfx']) { const v = parseFloat(localStorage.getItem('phill-metro-vol-' + k)); if (v >= 0 && v <= 1) VOL[k] = v; } } catch (e) {}
+let sfxBus = null;
+function sfxOut() {                                 // every sound effect goes through this, so the effects volume turns them all
+  if (!sfxBus || sfxBus.context !== actx) { sfxBus = actx.createGain(); sfxBus.gain.value = VOL.sfx; sfxBus.connect(actx.destination); }
+  return sfxBus;
+}
+function setVolume(k, v) {
+  VOL[k] = Math.max(0, Math.min(1, Math.round(v * 10) / 10));
+  try { localStorage.setItem('phill-metro-vol-' + k, String(VOL[k])); } catch (e) {}
+  if (k === 'sfx' && sfxBus) sfxBus.gain.setTargetAtTime(VOL.sfx, actx.currentTime, 0.03);
+  if (k === 'music') music.mute(muted);
+}
 function audio() {
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
   if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
@@ -10,7 +24,7 @@ function tone(f0, f1, dur, type = 'square', vol = 0.06) {
   const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g).connect(sfxOut()); o.start(t); o.stop(t + dur + 0.02);
 }
 let noiseBuf = null;
 function noiseBuffer() {
@@ -23,7 +37,7 @@ function noise(dur, f0, f1, vol = 0.08, q = 1.2) {
   const t = actx.currentTime, s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
   s.buffer = noiseBuf; f.type = 'bandpass'; f.Q.value = q; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  s.connect(f).connect(g).connect(actx.destination); s.start(t); s.stop(t + dur + 0.02);
+  s.connect(f).connect(g).connect(sfxOut()); s.start(t); s.stop(t + dur + 0.02);
 }
 const sfx = {
   jump: () => tone(260, 520, 0.09, 'square', 0.035),
@@ -70,7 +84,7 @@ const sfx = {
     o.frequency.setValueAtTime(1050, t); o.frequency.exponentialRampToValueAtTime(1850, t + 0.06); o.frequency.exponentialRampToValueAtTime(1250, t + 0.24);
     lfo.frequency.value = 34; depth.gain.value = 70; lfo.connect(depth).connect(o.frequency);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
-    o.connect(f).connect(g).connect(actx.destination); o.start(t); lfo.start(t); o.stop(t + 0.28); lfo.stop(t + 0.28);
+    o.connect(f).connect(g).connect(sfxOut()); o.start(t); lfo.start(t); o.stop(t + 0.28); lfo.stop(t + 0.28);
   },
   ko: () => { tone(420, 110, 0.6, 'triangle', 0.08); noise(0.2, 900, 200, 0.07); },
   guardbreak: () => { noise(0.18, 1400, 200, 0.16, 0.8); tone(340, 90, 0.3, 'square', 0.06); },
@@ -84,7 +98,7 @@ const sfx = {
     o.type = 'sawtooth'; o2.type = 'square'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(60, t + 1.3); o2.frequency.setValueAtTime(56, t); o2.frequency.exponentialRampToValueAtTime(38, t + 1.3);
     lfo.frequency.value = 23; ld.gain.value = 18; lfo.connect(ld).connect(o.frequency);
     f.type = 'lowpass'; f.frequency.value = 900; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
-    o.connect(f); o2.connect(f); f.connect(g).connect(actx.destination); for (const x of [o, o2, lfo]) { x.start(t); x.stop(t + 1.5); }
+    o.connect(f); o2.connect(f); f.connect(g).connect(sfxOut()); for (const x of [o, o2, lfo]) { x.start(t); x.stop(t + 1.5); }
     noise(1.2, 900, 200, 0.12, 0.6);
   },
   stomp: () => { tone(70, 40, 0.18, 'triangle', 0.16); noise(0.08, 400, 120, 0.08); },
@@ -128,14 +142,14 @@ const sfx = {
     const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
     s.buffer = noiseBuffer(); s.loop = true; f.type = 'bandpass'; f.Q.value = 0.8; f.frequency.value = out ? 1300 : 1600;
     g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(out ? 0.001 : 0.0015, t + d * 0.45); g.gain.linearRampToValueAtTime(0.0001, t + d);   // the breath: barely there (her call, turned down twice)
-    s.connect(f).connect(g).connect(actx.destination); s.start(t); s.stop(t + d + 0.02);
+    s.connect(f).connect(g).connect(sfxOut()); s.start(t); s.stop(t + d + 0.02);
     if (out) {                                                       // the little squeak, soft as it gets
       const w = actx.createOscillator(), wg = actx.createGain(), lfo = actx.createOscillator(), dep = actx.createGain();
       const pf = 1140 + Math.random() * 80;                         // never quite the same twice
       w.type = 'sine'; w.frequency.setValueAtTime(pf, t + 0.15); w.frequency.linearRampToValueAtTime(pf - 100, t + 0.5);
       lfo.frequency.value = 9; dep.gain.value = 18; lfo.connect(dep).connect(w.frequency);
       wg.gain.setValueAtTime(0.0001, t); wg.gain.setValueAtTime(0.0001, t + 0.15); wg.gain.linearRampToValueAtTime(0.0045, t + 0.25); wg.gain.linearRampToValueAtTime(0.0001, t + 0.5);
-      w.connect(wg).connect(actx.destination); w.start(t); w.stop(t + 0.55); lfo.start(t); lfo.stop(t + 0.55);
+      w.connect(wg).connect(sfxOut()); w.start(t); w.stop(t + 0.55); lfo.start(t); lfo.stop(t + 0.55);
     }
   },
   step: (floor) => {   // a soft little footstep, different on each kind of ground
@@ -156,7 +170,7 @@ const sfx = {
       o2.frequency.setValueAtTime(262 * f0, t + d); o2.frequency.exponentialRampToValueAtTime(190 * f0, t + d + 0.24);
       f.type = 'bandpass'; f.frequency.value = 1350; f.Q.value = 2.5; f2.type = 'bandpass'; f2.frequency.value = 2600; f2.Q.value = 3;
       g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.16 * v, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.27);
-      o.connect(f); o2.connect(f); o.connect(f2); f.connect(g); f2.connect(g); g.connect(actx.destination);
+      o.connect(f); o2.connect(f); o.connect(f2); f.connect(g); f2.connect(g); g.connect(sfxOut());
       o.start(t + d); o2.start(t + d); o.stop(t + d + 0.3); o2.stop(t + d + 0.3);
       setTimeout(() => noise(0.22, 2400, 1100, 0.07 * v, 1.2), d * 1000);
     }
@@ -209,6 +223,10 @@ const sfx = {
 // room: 16 bars in F, played A (vibes on the tune), B (piano takes the tune, vibes answer), A again, then C (marimba noodling)
 const music = (() => {
   let on = true, master = null, wet = null, timer = null, step = 0, nextT = 0, pass = 0, song = 'home', want = 'home', stingT = 0;
+  // each song plays into its own bus (and its own send to the reverb), so changing songs can fade the old one out on its
+  // own, notes it already had lined up included, while the new one comes in at full (10/17/2026)
+  let bus = null, verb = null, atBar = false;                  // atBar: a change waiting for the old song's next bar
+  const level = () => (on && !muted) ? 0.5 * VOL.music : 0;
   try { on = localStorage.getItem('phill-metro-music') !== 'off'; } catch (e) {}
   let BEAT = 60 / 108, SWING = 0.63;
   const N = s => { const m = s.match(/^([A-G])(b|#)?(\d)$/); return 12 * (+m[3] + 1) + { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0); };
@@ -232,14 +250,23 @@ const music = (() => {
   const rand = () => (rnd = (rnd * 16807) % 2147483647) / 2147483647;
 
   function out() {
-    if (master) return master;
-    master = actx.createGain(); master.gain.value = (on && !muted) ? 0.5 : 0; master.connect(actx.destination);
-    // a little room around it
-    const len = actx.sampleRate * 1.6, ir = actx.createBuffer(2, len, actx.sampleRate);
-    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
-    const verb = actx.createConvolver(); verb.buffer = ir; wet = actx.createGain(); wet.gain.value = 0.22;
-    wet.connect(verb).connect(master);
-    return master;
+    if (!master) {
+      master = actx.createGain(); master.gain.value = level(); master.connect(actx.destination);
+      // a little room around it
+      const len = actx.sampleRate * 1.6, ir = actx.createBuffer(2, len, actx.sampleRate);
+      for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+      verb = actx.createConvolver(); verb.buffer = ir; verb.connect(master); bus = null;
+    }
+    if (!bus) { bus = actx.createGain(); bus.connect(master); wet = actx.createGain(); wet.gain.value = 0.22; wet.connect(verb); }
+    return bus;
+  }
+  // fade the playing song's bus out (from time t, over secs) and let it go. The next note gets a fresh bus
+  function retire(secs, t) {
+    if (!bus || !actx) return;
+    const b = bus, w = wet; t = Math.max(t || 0, actx.currentTime);
+    for (const g of [b.gain, w.gain]) { g.cancelScheduledValues(t); g.setValueAtTime(g.value || 1e-4, t); g.linearRampToValueAtTime(0, t + secs); }
+    setTimeout(() => { try { b.disconnect(); w.disconnect(); } catch (e) {} }, (t - actx.currentTime + secs + 0.3) * 1000);
+    bus = null; out();
   }
   function env(g, t, a, peak, dec) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dec); }
   function voice(t, f, type, peak, dec, dest, lp) {
@@ -389,6 +416,26 @@ const music = (() => {
       each((t, m, d) => { if (rand() < 0.55) feltPiano(t, m, 0.045); });                  // the piano just hints at the tune
       if (rand() < 0.5) { const tt = t0 + rand() * 3 * BEAT; for (let i = 0; i < 2 + Math.floor(rand() * 3); i++) voice(tt + i * 0.09, 3200 + rand() * 900, 'sine', 0.006, 0.07, out()); }   // birds outside
     }
+  }
+  // the title: the home tune on a music box, quiet and roomy, out in the park at night (from the music chat's "A Warm
+  // Memory" sketch, on the game's own instruments). A soft felt note under each bar and a few plucked chord notes, no
+  // drums. It goes round in three passes of 16 bars:
+  //   1: the music box alone with the tune, the plucks coming in for the second half
+  //   2: the same, and where the tune stops to breathe a flute answers it with its last few notes
+  //   3: barely there, the box playing the first half an octave down and every other bar, then back to the top
+  function playTitle(bar, t0) {
+    const [root, chord] = HOME_CH[bar], notes = chord.split(' ').map(N), r = N(root), line = HOME_TUNE[bar], round = pass % 3;
+    feltPiano(t0, r, round === 2 ? 0.04 : 0.055);
+    if (round !== 2 && (bar >= 8 || round === 1)) { pluck(t0 + BEAT, notes[1] + 12, 0.012); pluck(t0 + 2.5 * BEAT, notes[2] + 12, 0.010); }
+    const each = fn => { for (let e = 0; e < 8; e++) { const n = line[e]; if (n !== '.' && n !== '-') fn(t0 + e * BEAT / 2, N(n), e); } };
+    if (round === 2) { if (bar < 8 && bar % 2 === 0) each((t, m) => musicbox(t, m - 12, 0.034)); }
+    else each((t, m) => musicbox(t, m, 0.04));
+    // the answer: the tune rests at the end of the bar, so the flute echoes the bar's last notes there, softly
+    if (round === 1 && line[5] === '.' && line[6] === '.' && line[7] === '.') {
+      const ns = line.slice(0, 5).filter(n => n !== '.' && n !== '-').slice(-2);
+      ns.forEach((n, i) => flute(t0 + (2.5 + i) * BEAT, N(n), BEAT * 0.9, 0.022));
+    }
+    if (rand() < 0.4) { const tt = t0 + rand() * 3 * BEAT; for (let i = 0; i < 3; i++) voice(tt + i * 0.06, 4300 + rand() * 200, 'sine', 0.003, 0.03, out()); }   // a cricket
   }
   // the Pond: easy and sunny. A plucked uke rolling along, a marimba with the tune, and water dripping off the reeds
   const POND_CH = [['A2', 'A3 C#4 E4'], ['F#2', 'F#3 A3 C#4'], ['D2', 'D3 F#3 A3'], ['E2', 'E3 G#3 B3'], ['A2', 'A3 C#4 E4'], ['C#2', 'C#3 E3 G#3'], ['D2', 'D3 F#3 A3 B3'], ['E2', 'E3 G#3 B3 D4']];
@@ -546,7 +593,7 @@ const music = (() => {
     if (bar % 4 === 2) { const tt = t0 + BEAT; brush(tt, 0.03, 220, 0.5); }                                                     // a gurgle, far off
   }
   // each region gets its own song. wind: up in the oak
-  const SONGS = { home: { beat: 60 / 92, swing: 0.5, bar: playHome }, jazz: { beat: 60 / 108, swing: 0.63, bar: (b, t) => playBar(b, t) }, wind: { beat: 1, swing: 0.5, bar: playWind },
+  const SONGS = { title: { beat: 60 / 80, swing: 0.5, bar: playTitle }, home: { beat: 60 / 92, swing: 0.5, bar: playHome }, jazz: { beat: 60 / 108, swing: 0.63, bar: (b, t) => playBar(b, t) }, wind: { beat: 1, swing: 0.5, bar: playWind },
     rootwood: { beat: 60 / 70, swing: 0.5, bar: playRoot }, soldier: { beat: 60 / 116, swing: 0.5, bar: playMarch },
     pond: { beat: 60 / 96, swing: 0.56, bar: playPond }, deep: { beat: 60 / 72, swing: 0.5, bar: playDeep }, sailboat: { beat: 60 / 132, swing: 0.6, bar: playShanty },
     tangle: { beat: 60 / 100, swing: 0.5, bar: playTangle }, swan: { beat: 60 / 150, swing: 0.5, bar: playWaltz, beats: 3 },
@@ -556,11 +603,16 @@ const music = (() => {
   function tick() {
     if (!actx || actx.state !== 'running') return;
     if (stingT && actx.currentTime < stingT - 0.25) return;     // let the fanfare ring out
-    if (want !== song) { song = want; step = 0; pass = 0; nextT = Math.max(actx.currentTime + 0.05, stingT || 0); }
+    if (want !== song && !(atBar && song)) { song = want; step = 0; pass = 0; nextT = Math.max(actx.currentTime + 0.05, stingT || 0); }
     stingT = 0;
     if (!song) return;                                           // quiet (a scene stopped the music)
-    const S2 = SONGS[song]; BEAT = S2.beat; SWING = S2.swing;
+    let S2 = SONGS[song]; BEAT = S2.beat; SWING = S2.swing;
     while (nextT < actx.currentTime + 0.3) {
+      if (atBar && want !== song) {                              // a room change: the new song starts where the old one's bar ends
+        atBar = false; retire(0.5, nextT); song = want; step = 0; pass = 0;
+        if (!song) return;
+        S2 = SONGS[song]; BEAT = S2.beat; SWING = S2.swing;
+      }
       S2.bar(step, nextT);
       nextT += (S2.beats || 4) * BEAT; step++;
       if (step >= 16) { step = 0; pass++; }
@@ -568,7 +620,7 @@ const music = (() => {
   }
   function start() {
     if (!actx || timer || !on) return;
-    out(); master.gain.value = muted ? 0 : 0.5;
+    out(); master.gain.value = level();
     nextT = actx.currentTime + 0.15; step = 0;
     timer = setInterval(tick, 60); tick();
   }
@@ -578,13 +630,24 @@ const music = (() => {
     get on() { return on; },
     toggle() {
       on = !on; try { localStorage.setItem('phill-metro-music', on ? 'on' : 'off'); } catch (e) {}
-      if (on) { audio(); if (master) master.gain.setTargetAtTime(muted ? 0 : 0.5, actx.currentTime, 0.1); start(); } else stop();
+      if (on) { audio(); if (master) master.gain.setTargetAtTime(level(), actx.currentTime, 0.1); start(); } else stop();
     },
-    play(name) {                       // switch songs, starting on the next beat
-      if (name === undefined || (name !== null && !SONGS[name]) || name === want) return;   // null: stop the music
-      want = name; if (actx && timer && !stingT) { nextT = actx.currentTime + 0.05; tick(); }
+    // switch songs (null: quiet). how: left out, straight away (scenes and bosses: the old song's notes fade in a blink).
+    // 'bar': wait for the old song's next bar, then it fades as the new one starts (going room to room; if that bar's more
+    // than a second and a half off it fades out sooner instead). A number: fade the old one over that many seconds, the
+    // new one coming in halfway through (the title menu into the game)
+    play(name, how) {
+      if (name === undefined || (name !== null && !SONGS[name])) return;
+      if (name === want && !(atBar && name === song)) return;
+      atBar = false;
+      const live = actx && timer && actx.state === 'running' && song;
+      if (!live) { want = name; return; }
+      if (how === 'bar' && name && nextT - actx.currentTime <= 1.5) { want = name; atBar = name !== song; return; }
+      const secs = typeof how === 'number' ? how : how === 'bar' ? 0.6 : 0.12;
+      retire(secs); want = song = name; step = 0; pass = 0; nextT = actx.currentTime + (typeof how === 'number' ? secs * 0.5 : how === 'bar' ? 0.3 : 0.05); tick();
     },
-    mute(m) { if (master) master.gain.setTargetAtTime(m || !on ? 0 : 0.5, actx.currentTime, 0.05); },
-    __render(bars, from, name) { master = null; out(); master.gain.value = 0.5; pass = from || 0; const S2 = SONGS[name || 'home']; BEAT = S2.beat; SWING = S2.swing; let tt = 0.1; for (let b = 0; b < bars; b++) { S2.bar(b % 16, tt); tt += (S2.beats || 4) * BEAT; if (b % 16 === 15) pass++; } },   // testing: lay bars out on an offline context
+    get song() { return want; },
+    mute(m) { if (master) master.gain.setTargetAtTime(m || !on ? 0 : 0.5 * VOL.music, actx.currentTime, 0.05); },
+    __render(bars, from, name) { master = null; bus = null; out(); master.gain.value = 0.5; pass = from || 0; const S2 = SONGS[name || 'home']; BEAT = S2.beat; SWING = S2.swing; let tt = 0.1; for (let b = 0; b < bars; b++) { S2.bar(b % 16, tt); tt += (S2.beats || 4) * BEAT; if (b % 16 === 15) pass++; } },   // testing: lay bars out on an offline context
   };
 })();

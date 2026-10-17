@@ -222,7 +222,7 @@ function enterRoom(id, doorId) {
   if (def.mapAt) world.seen[id] = true;
   saveWorld();
   spawnFoes(); talk = null; mapView = null; if (typeof setupBoss === 'function') setupBoss(); if (typeof setupRootwoodRoom === 'function') setupRootwoodRoom(); if (typeof setupPondRoom === 'function') setupPondRoom();
-  music.play(def.music);
+  music.play(def.music, 'bar');                                      // (room to room: the new song waits for the old one's bar)
   // this room and the ones next door stay loaded, everything else goes
   Rooms.keep(new Set([id, ...def.doors.map(o => o.to), ...(def.next || [])]));
   // the room's own cutscene, if it has one (it decides from what's already happened whether to play)

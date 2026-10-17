@@ -28,7 +28,7 @@ const plantSfx = (() => {
   function out(vol, at, a, d, dest) {                                                // a gain with an attack and a fall
     const g = actx.createGain();
     g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + Math.max(0.004, a)); g.gain.exponentialRampToValueAtTime(0.0001, at + a + d);
-    g.connect(dest || actx.destination); return g;
+    g.connect(dest || sfxOut()); return g;
   }
   function osc(type, f0, f1, delay, a, d, vol, o = {}) {
     const t = actx.currentTime + delay, os = actx.createOscillator();

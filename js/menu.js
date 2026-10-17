@@ -1,8 +1,10 @@
 'use strict';
 // ---------- the title menu (her ask, 10/17/2026): Continue, New game, Load, The story, Options and Controls over the title
 // card. Keyboard, mouse, controller and touch all work it: up and down (or the stick, the d-pad, W and S) to move, Enter,
-// Space, Z or Cross to pick, Esc, Backspace or Circle to go back, left and right to change an option. Three save slots
-// (world.js). The tests skip it (window.__testSkipTitle): clicking the start screen or any key just starts, like before ----------
+// Space, Z or Cross to pick, Esc, Backspace or Circle to go back, left and right to change an option. Tab moves through it
+// too, and the picked row really has the focus, so a screen reader follows along. Three save slots (world.js). A music
+// box plays the home tune once there's been a click or a key (browsers won't play anything before that). The tests skip
+// it (window.__testSkipTitle): clicking the start screen or any key just starts, like before ----------
 const titleMenu = window.titleMenu = (() => {                                // (on window too: input.js checks it)
   const api = { open: false };
   if (window.__testSkipTitle) return api;
@@ -12,19 +14,20 @@ const titleMenu = window.titleMenu = (() => {                                // 
   const root = document.createElement('div'); root.id = 'title'; startEl.appendChild(root);
   api.open = true;
 
-  // ---- the story, in a few pages (no spoilers past the start)
+  // ---- the story: just the setup, the rest is for playing (feedback, 10/17/2026)
   const STORY = [
     "Phill is a little green plush. He lives in a cozy house with his kid, who loves him to bits.",
-    "One sunny morning the back door's left open. Phill waddles out into the backyard to see what's out there, and a crow spots something small and green in the grass.",
-    "It snatches him up and carries him off over the fence, to its nest high in an old oak in the park. When you're as small as Phill, the park is a dark forest that goes on forever.",
-    "Something's wrong in the park. Black, oily Grime is seeping up out of the ground. It gets into the litter and makes it mean, and it creeps into the toys that were left behind. The animals are scared, and the forgotten toys have dug in underground to hide from it.",
-    "Phill could just try to find his way home. But nobody's coming for the toys and the animals out here. So he picks up his little sword and shield, and he stays to help.",
+    "One sunny morning the back door's left open. Phill waddles out into the yard to see what's out there, and a crow spots something small and green in the grass. It snatches him up and carries him off over the fence, into the park.",
+    "When you're as small as Phill, the park is a dark forest that goes on forever. Something's wrong out here, too. Black Grime is seeping up out of the ground, the animals are scared, and the toys that got left behind have all gone into hiding. Home is a long way off.",
   ];
-  const CONTROLS = [
-    ['Move', 'Arrow keys or WASD', 'Left stick or D-pad'], ['Jump', 'Z or Space', 'X'], ['Swing', 'X', 'R1'],
-    ['Shield', 'V or Shift', 'L1, or point the right stick'], ['Roll', 'C', 'Circle'], ['Squeak', 'F', 'Triangle'],
-    ['Spin', 'G', 'Square'], ['Map', 'M', 'Share'], ['Look up or down', 'Hold up or down', 'Hold up or down'], ['Tuning', 'Tab', 'Options'],
-  ];
+  // the controls, one view for the keyboard and one for a controller (the touch buttons are laid out like the controller)
+  const CONTROLS = {
+    Keyboard: [['Move', 'Arrow keys or WASD'], ['Jump', 'Z or Space'], ['Swing', 'X'], ['Shield', 'Hold V or Shift'], ['Roll', 'C'],
+      ['Squeak', 'F'], ['Spin', 'G'], ['Map', 'M'], ['Look up or down', 'Hold up or down'], ['Tuning', 'Tab']],
+    Controller: [['Move', 'Left stick or D-pad'], ['Jump', 'X'], ['Swing', 'R1'], ['Shield', 'Hold L1, right stick aims'], ['Turn round', 'Right stick'], ['Roll', 'Circle'],
+      ['Squeak', 'Triangle'], ['Spin', 'Square'], ['Map', 'Share'], ['Look up or down', 'Hold up or down'], ['Tuning', 'Options']],
+  };
+  const MOVES_TEXT = 'Walk into a low gap to crawl under it. Fall past a ledge and hold toward it to grab on, then press up to climb. Down and jump drops through shelves.';
 
   // ---- the save slots
   const regionName = id => { const f = (window.ROOM_FILES || {})[id]; const r = f && f.split('/')[1]; const hit = (typeof AREA_REGIONS !== 'undefined' ? AREA_REGIONS : []).find(x => x[0] === r); return hit ? hit[1] : ''; };
@@ -34,11 +37,29 @@ const titleMenu = window.titleMenu = (() => {                                // 
   const slotLine = s => s ? [placeName(s.room), regionName(s.room), playTime(s.playSec)].filter(Boolean).join(' · ') : 'Empty';
   const slotWhen = s => s && s.savedAt ? 'Saved ' + when(s.savedAt) : '';
 
+  // ---- the music: the title's own song while the menu's up. Anything the game asks to play meanwhile (the room behind the
+  // menu) is kept for when he starts, and then the title song fades into it
+  const _playTitle = music.play;
+  let roomSong;
+  music.play = (name, fade) => { if (api.open) { if (name !== undefined) roomSong = name; return; } return _playTitle(name, fade); };
+  let woke = false;
+  function wake() {                                                                   // the first click, tap or key: sound's allowed now
+    audio();                                                                          // (every time: a touch only counts once the finger lifts)
+    if (woke) return; woke = true;
+    _playTitle('title'); setTimeout(() => music.start(), 60);
+  }
+
   // ---- starting the game
   function go() { begin(); }
   // anything that starts the game (the menu, Start over, the tuning button) puts the menu away
   const _beginTitle = begin;
-  begin = function () { api.open = false; root.hidden = true; document.body.classList.remove('titlemenu'); return _beginTitle(); };
+  begin = function () {
+    if (api.open) {
+      api.open = false; root.hidden = true; document.body.classList.remove('titlemenu'); music.play = _playTitle;
+      _playTitle(roomSong !== undefined ? roomSong : room && room.def ? room.def.music : 'home', 0.7);
+    }
+    return _beginTitle();
+  };
   function startNew(n) { useSlot(n); resetWorld(); if (typeof foesAllBack === 'function') foesAllBack(); startGame(); go(); }
   function loadSlot(n) {
     if (n !== saveSlot || !readSlot(n)) { useSlot(n); if (!loadWorld()) resetWorld(); if (typeof foesAllBack === 'function') foesAllBack(); startGame(); }
@@ -47,10 +68,24 @@ const titleMenu = window.titleMenu = (() => {                                // 
 
   // ---- the screens
   let screen = 'main', items = [], at = 0, opts = {}, last = matchMedia('(hover: none)').matches ? 'touch' : 'key';    // (a phone starts out saying tap)
+  let keysView = null;                                                                // which controls the Controls screen shows (null: whatever was used last)
   const opt = (id, label) => {                                                        // an option shown by one of the menu bar's own buttons, so they stay in step
     const b = () => document.getElementById(id);
     return { label, value: () => { const t = (b() && b().textContent) || ''; return /exit full/i.test(t) ? 'On' : /full screen/i.test(t) ? 'Off' : (t.split(/:\s*| /).pop() || '').replace(/^./, c => c.toUpperCase()); },
       act: () => { if (b()) b().click(); }, hide: () => !b() };
+  };
+  // a volume, 0 to 10. Music at 0 turns the music off, and turning it up again turns it back on
+  const volOpt = (k, label) => {
+    const get = () => k === 'music' && !music.on ? 0 : Math.round(VOL[k] * 10);
+    const set = v => {
+      v = Math.max(0, Math.min(10, v));
+      if (k === 'music') {
+        if (v === 0) { if (music.on) document.getElementById('musicBtn').click(); return; }
+        setVolume('music', v / 10); if (!music.on) document.getElementById('musicBtn').click();
+      } else { setVolume('sfx', v / 10); if (sfx.tick) sfx.tick(); }
+      if (typeof syncVolumes === 'function') syncVolumes();
+    };
+    return { label, vol: get, left: () => set(get() - 1), right: () => set(get() + 1), act: () => set(get() >= 10 ? 0 : get() + 1), stay: true };
   };
   const SCREENS = {
     main: () => {
@@ -78,70 +113,106 @@ const titleMenu = window.titleMenu = (() => {                                // 
         { label: 'Start a new game', act: () => startNew(opts.n) }, { label: 'Back', act: back, back: true }], focus: 1 };
       return { title: `New game in slot ${opts.n}?`, items: [{ label: 'Start a new game', act: () => startNew(opts.n) }, { label: 'Back', act: back, back: true }] };
     },
-    story: () => ({ title: 'The story', story: true, text: STORY[opts.page], page: `${opts.page + 1} / ${STORY.length}`, items: [
-      opts.page < STORY.length - 1 ? { label: 'Next', act: () => show('story', { page: opts.page + 1 }), left: () => opts.page > 0 && show('story', { page: opts.page - 1 }), right: () => show('story', { page: opts.page + 1 }) }
-        : { label: 'Back to the menu', act: back, left: () => show('story', { page: opts.page - 1 }) },
-      opts.page > 0 && { label: 'Back a page', act: () => show('story', { page: opts.page - 1 }) },
-    ].filter(Boolean), backTo: 'main' }),
-    options: () => ({ title: 'Options', items: [opt('musicBtn', 'Music'), opt('muteBtn', 'Sound'), opt('maxBtn', 'Full screen'), opt('touchBtn', 'Touch controls'), opt('buzzBtn', 'Buzz on a phone')]
-      .filter(o => !o.hide()).map(o => ({ label: o.label, value: o.value, act: o.act, left: o.act, right: o.act, stay: true })).concat([{ label: 'Back', act: back, back: true }]) }),
-    controls: () => ({ title: 'Controls', table: CONTROLS, text: 'Walk into a low gap to crawl under it. Fall past a ledge and hold toward it to grab on, then press up to climb. Down and jump drops through shelves.' + (document.body.classList.contains('touch') ? '\nOn a phone or tablet the buttons on screen are laid out like the controller.' : ''), items: [{ label: 'Back', act: back, back: true }] }),
+    story: () => {
+      const p = opts.page, lastPage = p === STORY.length - 1;
+      const turn = d => () => { const q = p + d; if (q >= 0 && q < STORY.length) show('story', { page: q }, false, true); };
+      return { title: 'The story', story: true, text: STORY[p], page: `${p + 1} / ${STORY.length}`, items: [
+        !lastPage && { label: 'Next', act: turn(1), left: turn(-1), right: turn(1) },
+        p > 0 && { label: 'Back a page', act: turn(-1), left: turn(-1), right: turn(1) },
+        { label: 'Back to the menu', act: back, back: true, left: turn(-1), right: turn(1) },
+      ].filter(Boolean), focus: opts.focus };
+    },
+    options: () => ({ title: 'Options', items: [volOpt('music', 'Music volume'), volOpt('sfx', 'Effects volume')]
+      .concat([opt('muteBtn', 'All sound'), opt('maxBtn', 'Full screen'), opt('touchBtn', 'Touch controls'), opt('buzzBtn', 'Buzz on a phone')]
+        .filter(o => !o.hide()).map(o => ({ label: o.label, value: o.value, act: o.act, left: o.act, right: o.act, stay: true })))
+      .concat([{ label: 'Back', act: back, back: true }]) }),
+    controls: () => {
+      const view = keysView || (last === 'key' || last === 'mouse' ? 'Keyboard' : 'Controller');
+      const flip = () => { keysView = view === 'Keyboard' ? 'Controller' : 'Keyboard'; };
+      return { title: 'Controls', table: CONTROLS[view], text: MOVES_TEXT + (view === 'Controller' && document.body.classList.contains('touch') ? ' On a phone or tablet the buttons on screen are laid out like the controller.' : ''),
+        items: [{ label: 'Showing', value: () => view, act: flip, left: flip, right: flip, stay: true, top: true }, { label: 'Back', act: back, back: true }] };
+    },
   };
   const PARENT = { load: 'main', slot: 'load', newslot: 'main', story: 'main', options: 'main', controls: 'main' };
   function back() {
     if (screen === 'main') return;
-    const prev = screen === 'confirm' ? (opts.kind === 'delete' ? ['slot', { n: opts.n }] : opts.kind === 'replace' ? ['newslot', {}] : ['load', {}]) : [PARENT[screen] || 'main', screen === 'slot' ? {} : {}];
+    const prev = screen === 'confirm' ? (opts.kind === 'delete' ? ['slot', { n: opts.n }] : opts.kind === 'replace' ? ['newslot', {}] : ['load', {}]) : [PARENT[screen] || 'main', {}];
     show(prev[0], prev[1], true); sfx.click && sfx.click();
   }
   const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  function show(name, o = {}, backward) {
-    const from = screen; screen = name; opts = o;
+  const pips = v => `<span class="tm-pips" aria-hidden="true">${Array.from({ length: 10 }, (_, i) => `<i class="${i < v ? 'f' : ''}"></i>`).join('')}</span>`;
+  function show(name, o = {}, backward, keepRow) {
+    const from = screen, label = keepRow && items[at] ? items[at].label : null;
+    screen = name; opts = o;
     const def = SCREENS[name](); items = def.items;
     at = def.focus != null ? def.focus : backward && PARENT[from] === name ? Math.max(0, items.findIndex(it => it.label.toLowerCase().startsWith({ load: 'load', story: 'the story', options: 'options', controls: 'controls', newslot: 'new game', slot: 'slot' }[from] || '#'))) : 0;
     if (name === 'load' && backward && from === 'slot') at = (o.n || 1) - 1;
-    root.className = def.side ? 'side' : 'center' + (def.story ? ' story' : '');
-    root.innerHTML = `<div class="tm-panel" role="menu" aria-label="${esc(def.title || 'Title menu')}">`
+    if (label) { const k = items.findIndex(it => it.label === label); at = k >= 0 ? k : Math.max(0, items.findIndex(it => it.back)); }   // (turning a story page keeps the same button picked)
+    root.className = def.side ? 'side' : 'center' + (def.story ? ' story' : '') + (def.table ? ' keys' : '');
+    const title = def.title || 'Title menu';
+    root.innerHTML = `<div class="tm-panel" role="dialog" aria-label="${esc(title)}">`
       + (def.title ? `<h2>${esc(def.title)}</h2>` : '')
-      + (def.text ? `<div class="tm-text">${esc(def.text).split('\n').map(l => `<p>${l}</p>`).join('')}</div>` : '')
-      + (def.table ? `<table class="tm-table"><tr><th></th><th>Keyboard</th><th>Controller</th></tr>${def.table.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td></tr>`).join('')}</table>` : '')
       + (def.page ? `<div class="tm-page">${def.page}</div>` : '')
-      + `<div class="tm-items">${items.map((it, i) => `<button type="button" class="tm-item${it.back ? ' tm-back' : ''}" role="menuitem" data-i="${i}">`
-        + `<span class="tm-label">${esc(it.label)}</span>${it.value ? `<span class="tm-value">‹ ${esc(it.value())} ›</span>` : ''}${it.mark ? `<span class="tm-mark">${esc(it.mark)}</span>` : ''}`
-        + (it.sub ? `<span class="tm-sub">${esc(it.sub)}</span>` : '') + (it.sub2 ? `<span class="tm-sub">${esc(it.sub2)}</span>` : '') + `</button>`).join('')}</div>`
-      + `<div class="tm-hint">${hintText()}</div></div>`;
+      + (items.some(it => it.top) ? `<div class="tm-items tm-top"></div>` : '')
+      + (def.text && !def.table ? `<div class="tm-text" aria-live="polite">${esc(def.text).split('\n').map(l => `<p>${l}</p>`).join('')}</div>` : '')
+      + (def.table ? `<div class="tm-keys" role="table" aria-label="${esc(title)}">${def.table.map(r => `<div class="tm-k" role="row"><span role="cell">${esc(r[0])}</span><span role="cell">${esc(r[1])}</span></div>`).join('')}</div>`
+        + (def.text ? `<div class="tm-text tm-note">${esc(def.text)}</div>` : '') : '')
+      + `<div class="tm-items" role="menu" aria-label="${esc(title)}">${items.map((it, i) => {
+        const val = it.vol ? String(it.vol()) : it.value ? it.value() : '';
+        const side = it.left || it.right;
+        return `<button type="button" class="tm-item${it.back ? ' tm-back' : ''}" role="menuitem" data-i="${i}"${val ? ` aria-label="${esc(it.label + ': ' + val)}"` : ''}>`
+        + `<span class="tm-label">${esc(it.label)}</span>`
+        + (it.vol ? `<span class="tm-value">${side ? '<span class="tm-arr" data-d="-1">‹</span>' : ''}${pips(it.vol())}${side ? '<span class="tm-arr" data-d="1">›</span>' : ''}</span>`
+          : it.value ? `<span class="tm-value">${side ? '<span class="tm-arr" data-d="-1">‹</span>' : ''}${esc(it.value())}${side ? '<span class="tm-arr" data-d="1">›</span>' : ''}</span>` : '')
+        + (it.mark ? `<span class="tm-mark">${esc(it.mark)}</span>` : '')
+        + (it.sub ? `<span class="tm-sub">${esc(it.sub)}</span>` : '') + (it.sub2 ? `<span class="tm-sub">${esc(it.sub2)}</span>` : '') + `</button>`; }).join('')}</div>`
+      + `<div class="tm-hint" aria-hidden="true">${hintText()}</div></div>`;
+    const top = root.querySelector('.tm-top');
+    if (top) items.forEach((it, i) => { if (it.top) top.appendChild(root.querySelector(`.tm-item[data-i="${i}"]`)); });
     for (const b of root.querySelectorAll('.tm-item')) {
       const i = +b.dataset.i;
-      b.addEventListener('click', e => { e.stopPropagation(); audio(); if (e.pointerType) setLast(e.pointerType === 'touch' ? 'touch' : 'mouse'); focus(i, true); pick(); });
+      b.addEventListener('click', e => {
+        e.stopPropagation(); wake(); if (e.pointerType) setLast(e.pointerType === 'touch' ? 'touch' : 'mouse');
+        const arr = e.target.closest && e.target.closest('.tm-arr');
+        focus(i, true);
+        if (arr && e.detail !== 0) side(+arr.dataset.d); else pick();                 // (the little arrows on an option turn it that way)
+      });
+      b.addEventListener('focus', () => { if (at !== i) { at = i; mark(); } });       // (Tab, or a screen reader, moving the focus)
     }
     focus(at, true);
+    if (def.side) place();
   }
-  const hintText = () => last === 'pad' ? 'Cross to pick, Circle to go back' : last === 'touch' ? 'Tap to pick' : last === 'mouse' ? 'Click to pick' : 'Enter to pick, Esc to go back';
-  function setLast(k) { if (last === k) return; last = k; const h = root.querySelector('.tm-hint'); if (h) h.textContent = hintText(); }   // (the hint follows what was used last)
+  function mark() { root.querySelectorAll('.tm-item').forEach((b, k) => b.classList.toggle('on', k === at)); }
   function focus(i, quiet) {
     if (!items.length) return;
     at = (i + items.length) % items.length;
-    root.querySelectorAll('.tm-item').forEach((b, k) => b.classList.toggle('on', k === at));
-    const b = root.querySelector(`.tm-item[data-i="${at}"]`); if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });
+    mark();
+    const b = root.querySelector(`.tm-item[data-i="${at}"]`);
+    if (b && document.activeElement !== b && api.open) { try { b.focus({ preventScroll: true }); } catch (e) {} }
+    if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' });
     if (!quiet && sfx.tick) sfx.tick();
   }
   function pick() {
     const it = items[at]; if (!it) return;
     if (sfx.pop) sfx.pop();
     it.act();
-    if (it.stay && api.open) show(screen, opts);                                        // (an option changed: show its new value, same row)
-    if (it.stay) focus(items.findIndex(x => x.label === it.label), true);
+    if (it.stay && api.open) show(screen, opts, false, true);                        // (an option changed: show its new value, same row)
   }
   function side(d) {
     const it = items[at]; if (!it) return;
     const f = d < 0 ? it.left : it.right; if (!f) return;
-    if (sfx.tick) sfx.tick(); const lab = it.label; f();
-    if (it.stay && api.open) { show(screen, opts); focus(items.findIndex(x => x.label === lab), true); }
+    if (sfx.tick) sfx.tick(); f();
+    if (it.stay && api.open) show(screen, opts, false, true);
   }
+  const hintText = () => last === 'pad' ? 'Cross to pick, Circle to go back' : last === 'touch' ? 'Tap to pick' : last === 'mouse' ? 'Click to pick' : 'Enter to pick, Esc to go back';
+  function setLast(k) { if (last === k) return; last = k; const h = root.querySelector('.tm-hint'); if (h) h.textContent = hintText(); }   // (the hint follows what was used last)
 
   // ---- keyboard
   window.addEventListener('keydown', e => {
     if (!api.open || tuneOpen()) return;
     if (e.target && /^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName)) return;        // (the menu bar's own pickers)
+    if (e.target && e.target.closest && e.target.closest('#bar')) return;              // (or its buttons, when Tab's gone down there)
+    wake();
     const c = e.code; let used = true;
     if (['ArrowUp', 'KeyW'].includes(c)) focus(at - 1);
     else if (['ArrowDown', 'KeyS'].includes(c)) focus(at + 1);
@@ -150,7 +221,7 @@ const titleMenu = window.titleMenu = (() => {                                // 
     else if (['Enter', 'NumpadEnter', 'Space', 'KeyZ'].includes(c)) { if (!e.repeat) pick(); }
     else if (['Escape', 'Backspace', 'KeyC'].includes(c)) back();
     else used = false;
-    if (used) { e.preventDefault(); audio(); setLast('key'); }
+    if (used) { e.preventDefault(); setLast('key'); }
   });
 
   // ---- controller (read straight off the pad: the game's own reading only starts once he's playing)
@@ -177,7 +248,8 @@ const titleMenu = window.titleMenu = (() => {                                // 
   requestAnimationFrame(padLoop);
 
   // ---- touch: a tap is a click (above); remember it was a finger so the hint says tap
-  root.addEventListener('pointerdown', e => { mx = e.clientX; my = e.clientY; if (e.pointerType === 'touch') setLast('touch'); });
+  root.addEventListener('pointerdown', e => { mx = e.clientX; my = e.clientY; wake(); if (e.pointerType === 'touch') setLast('touch'); });
+  for (const ev of ['pointerdown', 'click', 'touchend']) startEl.addEventListener(ev, () => { if (api.open) wake(); });
 
   // ---- mouse: the row under it lights up when it moves. Only a real move counts: the browser also sends one when the
   // menu changes under a mouse that's sitting still, and that shouldn't steal the row from the keys or the controller
@@ -198,16 +270,29 @@ const titleMenu = window.titleMenu = (() => {                                // 
   const _updTitle = update;
   update = function (dt) { if (started && !paused) world.playSec = (world.playSec || 0) + dt; return _updTitle(dt); };
 
-  // where the title card actually is on screen (it's fitted inside the start screen, so there can be bars at the sides or
-  // top), for placing the main list on it
+  // ---- where the title card is on screen, for placing the main list on it. It's fitted inside the start screen, so there
+  // can be bars at the sides or top. Held upright, the picture's drawn a little bigger than the width (its sides are just
+  // trees) and the picture and the menu sit together in the middle, the dark blue of the night filling round them
   const CARD = 1672 / 941;
   function place() {
     const W = startEl.clientWidth, H = startEl.clientHeight; if (!W || !H) return;
-    const iw = Math.min(W, H * CARD), ih = iw / CARD;
-    root.style.setProperty('--ix', (W - iw) / 2 + 'px'); root.style.setProperty('--iy', (H - ih) / 2 + 'px');
+    const upright = W / H < 1, phoneWide = !upright && H <= 500 && matchMedia('(hover: none)').matches;
+    let iw = Math.min(W, H * CARD), ih = iw / CARD, ix = (W - iw) / 2, iy = (H - ih) / 2;
+    startEl.style.backgroundSize = ''; startEl.style.backgroundPosition = '';
+    if (upright) {
+      iw = W * 1.16; ih = iw / CARD; ix = (W - iw) / 2;
+      const panel = root.querySelector('.side .tm-panel'), ph = panel ? panel.offsetHeight : 0, overlap = Math.min(ih * 0.12, 30);
+      iy = Math.max(12, (H - (ih + ph - overlap)) / 2);
+      if (panel) panel.style.top = (iy + ih - overlap) + 'px';
+      startEl.style.backgroundSize = `${iw}px auto, cover`; startEl.style.backgroundPosition = `center ${iy}px, 0 0`;
+    } else if (phoneWide) {                                                              // a phone held sideways: the picture to the left, the menu at the right
+      ix = 0; startEl.style.backgroundPosition = 'left center, 0 0';
+    }
+    root.classList.toggle('upright', upright); root.classList.toggle('phonewide', phoneWide);
+    root.style.setProperty('--ix', ix + 'px'); root.style.setProperty('--iy', iy + 'px');
     root.style.setProperty('--iw', iw + 'px'); root.style.setProperty('--ih', ih + 'px');
   }
-  window.addEventListener('resize', () => setTimeout(place, 30)); place();
+  window.addEventListener('resize', () => setTimeout(() => { if (api.open && screen === 'main') show('main', {}, false, true); else place(); }, 30));
   show('main');
   api.show = show; api.pick = pick; api.focus = i => focus(i, true); api.screen = () => screen; api.items = () => items.map(i => i.label);
   return api;
