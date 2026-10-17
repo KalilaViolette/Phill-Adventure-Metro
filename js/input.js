@@ -29,7 +29,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyH' && started) { showBoxes = !showBoxes; return; }
   if (e.code === 'F3') { e.preventDefault(); showDebug = !showDebug; return; }   // G is the spin now (his friend's playtest, 10/14/2026), so what's loaded is F3 or its button
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && !tuneOpen()) e.preventDefault();
-  if (!started) { begin(); return; }
+  if (!started) { if (!(window.titleMenu && titleMenu.open)) begin(); return; }   // (the title menu takes the keys itself)
   if (e.repeat) return;
   keys.add(e.code); inp.any = 1; useDevice('key');
   if (keyIs(e.code, 'jump')) inp.jumpP = 1;
@@ -68,7 +68,7 @@ function pollPad() {
   const pressed = i => b(i) && !prevBtn[i];
   const ax = gp ? gp.axes[0] || 0 : 0, ay = gp ? gp.axes[1] || 0 : 0;
   const k = act => KEYMAP[act].some(c => keys.has(c));
-  if (gp && !started) { for (let i = 0; i < gp.buttons.length; i++) if (pressed(i)) { begin(); break; } }
+  if (gp && !started && !(window.titleMenu && titleMenu.open)) { for (let i = 0; i < gp.buttons.length; i++) if (pressed(i)) { begin(); break; } }
   if (gp && started && pressed(9)) toggleTune();
   if (tuneOpen()) { tunePad(gp, b, pressed, ay); }
   else {

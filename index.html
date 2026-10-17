@@ -52,12 +52,47 @@
   /* the title card (her pick, 10/17/2026, Moonlit Grime v5): the painting fills the start screen, the title's in it, so the
      words above it are kept for screen readers only and the start note sits low over the bottom of the picture */
   #start { background: #07080e url(art/title/title_card.jpg) center / contain no-repeat; place-items: end end; text-align: right; }
-  #start > div { margin: 0 max(2%, 10px) max(2%, 10px) 0; max-width: min(38ch, 46%); padding: 8px 14px 9px; border-radius: 8px; background: rgba(7, 8, 14, .74); }   /* (bottom right, over the water: Phill's in the middle) */
+  #start > div:not(#title) { margin: 0 max(2%, 10px) max(2%, 10px) 0; max-width: min(38ch, 46%); padding: 8px 14px 9px; border-radius: 8px; background: rgba(7, 8, 14, .74); }   /* (bottom right, over the water: Phill's in the middle) */
   #start h1, #start .sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   #start .small { font-size: 12px; margin-inline: 0; }
+  /* the title menu (js/menu.js, her ask 10/17/2026): the main list sits bottom right over the water, the rest open in a
+     bigger box in the middle with the picture dimmed behind it */
+  body.titlemenu #start { cursor: default; }
+  body.titlemenu #start > div:not(#title) { display: none; }
+  #title { position: absolute; inset: 0; pointer-events: none; }
+  #title .tm-panel { pointer-events: auto; position: absolute; box-sizing: border-box; text-align: left; color: #f3ead7; background: rgba(8, 9, 15, .8); border: 1px solid rgba(255, 228, 170, .22); border-radius: 10px; padding: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, .45); }
+  /* (the main list is placed on the picture itself, bottom right under the title, sized off it: menu.js sets --ix, --iy,
+     --iw and --ih to where the picture is on screen) */
+  #title.side .tm-panel { left: calc(var(--ix, 0px) + var(--iw, 100%) * .685); top: calc(var(--iy, 0px) + var(--ih, 100%) * .565); width: calc(var(--iw, 100%) * .3); max-height: calc(var(--ih, 100%) * .42); overflow-y: auto; padding: calc(var(--ih, 600px) * .01); }
+  #title.side .tm-item { font-size: max(13px, calc(var(--ih, 600px) * .029)); padding: calc(var(--ih, 600px) * .005) calc(var(--ih, 600px) * .018); }
+  #title.side .tm-item .tm-sub { font-size: max(10px, calc(var(--ih, 600px) * .018)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #title.side .tm-hint { font-size: max(10px, calc(var(--ih, 600px) * .019)); margin-top: calc(var(--ih, 600px) * .008); }
+  #title.center { background: rgba(4, 5, 9, .62); pointer-events: auto; }
+  #title.center .tm-panel { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(600px, 94%); max-height: 90%; overflow-y: auto; padding: 16px 18px 12px; }
+  #title h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; color: #ffd98a; letter-spacing: .04em; }
+  #title .tm-text p { margin: 0 0 8px; color: #e9e2d2; font-size: 15px; line-height: 1.5; }
+  #title.story .tm-text p { font-size: 18px; line-height: 1.6; min-height: 5.5em; }
+  #title .tm-page { color: var(--dim); font-size: 12px; margin: -2px 0 8px; }
+  #title .tm-items { display: flex; flex-direction: column; gap: 2px; }
+  #title .tm-item { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0 10px; width: 100%; text-align: left; font: inherit; font-size: clamp(15px, 1.2vw + 8px, 20px); color: #f3ead7; background: transparent; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  #title .tm-item .tm-sub { grid-column: 1 / -1; font-size: 12px; color: var(--dim); }
+  #title .tm-item .tm-value, #title .tm-item .tm-mark { font-size: 13px; color: #cfd6e6; white-space: nowrap; }
+  #title .tm-item .tm-mark { color: var(--accent); font-size: 11px; }
+  #title .tm-item.on { background: rgba(255, 214, 140, .16); color: #ffd98a; box-shadow: inset 3px 0 0 #ffd36b; }
+  #title .tm-item.on .tm-sub { color: #d9c9a4; }
+  #title .tm-item.tm-back { margin-top: 6px; font-size: clamp(14px, 1vw + 8px, 17px); color: #cfd6e6; }
+  #title .tm-item:focus-visible { outline: 2px solid #ffd36b; outline-offset: 1px; }
+  #title .tm-hint { margin-top: 8px; padding: 0 12px; font-size: 11px; color: var(--dim); }
+  #title .tm-table { width: 100%; border-collapse: collapse; margin: 0 0 10px; font-size: 13px; }
+  #title .tm-table th { text-align: left; color: #ffd98a; font-weight: 600; padding: 3px 6px; }
+  #title .tm-table td { padding: 3px 6px; border-top: 1px solid rgba(255, 255, 255, .08); color: #e9e2d2; }
+  #title .tm-table td:first-child { color: #cfd6e6; }
+  @media (max-height: 460px) { #title.center .tm-item { padding: 4px 10px; font-size: 15px; } #title .tm-hint { margin-top: 4px; } #title.story .tm-text p { font-size: 15px; min-height: 0; } #title.center .tm-panel { padding: 10px 14px 8px; } #title.side .tm-hint { display: none; } #title.side .tm-item { font-size: 12px; } }
+  @media (max-aspect-ratio: 1/1) { body.titlemenu #start { background-position: center 24%; } #title.side .tm-panel { left: 50%; top: auto; bottom: max(4%, 16px); transform: translateX(-50%); width: min(360px, 92%); max-height: none; padding: 10px; }
+    #title.side .tm-item { font-size: 18px; padding: 8px 12px; } #title.side .tm-item .tm-sub { font-size: 12px; } #title.side .tm-hint { font-size: 11px; } }
   #start:not([hidden]) ~ #touchpad { visibility: hidden; }   /* (the gamepad waits till he's started: it covered the title card) */
   body.touch #start { text-align: center; }
-  body.touch #start > div { max-width: none; margin: 0 max(11%, 12px) max(4%, 12px) 0; padding: 6px 16px; }
+  body.touch #start > div:not(#title) { max-width: none; margin: 0 max(11%, 12px) max(4%, 12px) 0; padding: 6px 16px; }
   body.touch #start .small { display: none; }
   .tune { position: absolute; top: 8px; right: 8px; bottom: 8px; width: min(360px, calc(100% - 16px)); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; box-sizing: border-box; }
   .tune h2 { margin: 0 0 2px; font-size: 18px; font-weight: 600; }
@@ -149,55 +184,56 @@
   </div>
 </div>
 <!-- the game's code. Rooms aren't listed here: they load one at a time as Phill gets near them -->
-<script>window.BUILD = '1018t';   // bump on every update: every script, room file and picture is asked for with it, so a browser never keeps an old copy</script>
-<script src="art/phill/phill_frames.js?v=1018t"></script>
-<script src="art/crow/crow_frames.js?v=1018t"></script>
-<script src="rooms/index.js?v=1018t"></script>
-<script src="rooms/map.js?v=1018t"></script>
-<script src="art/rootwood/rootwood_sprites.js?v=1018t"></script>
-<script src="art/rootwood/soldier_sprites.js?v=1018t"></script>
-<script src="art/pond/pond_sprites.js?v=1018t"></script>
-<script src="art/playground/playground_sprites.js?v=1018t"></script>
-<script src="art/oak/oak_sprites.js?v=1018t"></script>
-<script src="art/wildlife/wildlife.js?v=1018t"></script>
-<script src="art/hitmasks.js?v=1018t"></script>
-<script src="art/warren/warren_sprites.js?v=1018t"></script>
-<script src="js/config.js?v=1018t"></script>
-<script src="js/input.js?v=1018t"></script>
-<script src="js/audio.js?v=1018t"></script>
-<script src="js/assets.js?v=1018t"></script>
-<script src="js/fx.js?v=1018t"></script>
-<script src="js/world.js?v=1018t"></script>
-<script src="js/rooms.js?v=1018t"></script>
-<script src="js/player.js?v=1018t"></script>
-<script src="js/story.js?v=1018t"></script>
-<script src="js/idle.js?v=1018t"></script>
-<script src="js/scene.js?v=1018t"></script>
-<script src="js/scenes/opening.js?v=1018t"></script>
-<script src="js/font.js?v=1018t"></script>
-<script src="js/talk.js?v=1018t"></script>
-<script src="js/pins.js?v=1018t"></script>
-<script src="js/foes.js?v=1018t"></script>
-<script src="js/boss.js?v=1018t"></script>
-<script src="js/pond.js?v=1018t"></script>
-<script src="js/pond_bosses.js?v=1018t"></script>
-<script src="js/rootwood.js?v=1018t"></script>
-<script src="js/rootwood_foes2.js?v=1018t"></script>
-<script src="js/rootwood_plants.js?v=1018t"></script>
-<script src="js/oak.js?v=1018t"></script>
-<script src="js/wildlife.js?v=1018t"></script>
-<script src="js/oak_bosses.js?v=1018t"></script>
-<script src="js/playground.js?v=1018t"></script>
-<script src="js/playground_bosses.js?v=1018t"></script>
-<script src="js/map.js?v=1018t"></script>
-<script src="js/scenes/rootwood.js?v=1018t"></script>
-<script src="js/camera.js?v=1018t"></script>
-<script src="js/render.js?v=1018t"></script>
-<script src="js/warren.js?v=1018t"></script>
-<script src="js/ui.js?v=1018t"></script>
-<script src="js/main.js?v=1018t"></script>
-<script src="js/touch.js?v=1018t"></script>
-<script src="js/areas.js?v=1018t"></script>
-<script src="js/debug.js?v=1018t"></script>
+<script>window.BUILD = '1018u';   // bump on every update: every script, room file and picture is asked for with it, so a browser never keeps an old copy</script>
+<script src="art/phill/phill_frames.js?v=1018u"></script>
+<script src="art/crow/crow_frames.js?v=1018u"></script>
+<script src="rooms/index.js?v=1018u"></script>
+<script src="rooms/map.js?v=1018u"></script>
+<script src="art/rootwood/rootwood_sprites.js?v=1018u"></script>
+<script src="art/rootwood/soldier_sprites.js?v=1018u"></script>
+<script src="art/pond/pond_sprites.js?v=1018u"></script>
+<script src="art/playground/playground_sprites.js?v=1018u"></script>
+<script src="art/oak/oak_sprites.js?v=1018u"></script>
+<script src="art/wildlife/wildlife.js?v=1018u"></script>
+<script src="art/hitmasks.js?v=1018u"></script>
+<script src="art/warren/warren_sprites.js?v=1018u"></script>
+<script src="js/config.js?v=1018u"></script>
+<script src="js/input.js?v=1018u"></script>
+<script src="js/audio.js?v=1018u"></script>
+<script src="js/assets.js?v=1018u"></script>
+<script src="js/fx.js?v=1018u"></script>
+<script src="js/world.js?v=1018u"></script>
+<script src="js/rooms.js?v=1018u"></script>
+<script src="js/player.js?v=1018u"></script>
+<script src="js/story.js?v=1018u"></script>
+<script src="js/idle.js?v=1018u"></script>
+<script src="js/scene.js?v=1018u"></script>
+<script src="js/scenes/opening.js?v=1018u"></script>
+<script src="js/font.js?v=1018u"></script>
+<script src="js/talk.js?v=1018u"></script>
+<script src="js/pins.js?v=1018u"></script>
+<script src="js/foes.js?v=1018u"></script>
+<script src="js/boss.js?v=1018u"></script>
+<script src="js/pond.js?v=1018u"></script>
+<script src="js/pond_bosses.js?v=1018u"></script>
+<script src="js/rootwood.js?v=1018u"></script>
+<script src="js/rootwood_foes2.js?v=1018u"></script>
+<script src="js/rootwood_plants.js?v=1018u"></script>
+<script src="js/oak.js?v=1018u"></script>
+<script src="js/wildlife.js?v=1018u"></script>
+<script src="js/oak_bosses.js?v=1018u"></script>
+<script src="js/playground.js?v=1018u"></script>
+<script src="js/playground_bosses.js?v=1018u"></script>
+<script src="js/map.js?v=1018u"></script>
+<script src="js/scenes/rootwood.js?v=1018u"></script>
+<script src="js/camera.js?v=1018u"></script>
+<script src="js/render.js?v=1018u"></script>
+<script src="js/warren.js?v=1018u"></script>
+<script src="js/ui.js?v=1018u"></script>
+<script src="js/main.js?v=1018u"></script>
+<script src="js/touch.js?v=1018u"></script>
+<script src="js/areas.js?v=1018u"></script>
+<script src="js/debug.js?v=1018u"></script>
+<script src="js/menu.js?v=1018u"></script>
 </body>
 </html>
